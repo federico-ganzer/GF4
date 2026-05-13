@@ -1,99 +1,158 @@
 # GF4 Structure from Motion — Week 1 Guide
-## Seeing the Big Picture with COLMAP
+## Empirical Study of Sparse SfM with COLMAP
 
-**Theme:** Run a professional SfM/MVS pipeline end-to-end before implementing the internals yourself.  
-**Main output this week:** A working COLMAP reconstruction, a short experimental comparison across captures, and a clear understanding of what SfM succeeds and fails on.
+**Goal:** Use COLMAP as a professional reference system to understand what sparse Structure from Motion produces and what image-capture conditions make it succeed or fail.  
+**Main deliverable:** A structured intermediate report analysis COLMAP sparse reconstructions, camera-pose visualisations, feature/match inspection, controlled capture experiments, and explanations of success/failure.
+
+You should treat COLMAP as a black-box engineering system and investigate it systematically.
 
 ---
 
-## 0. Week 1 learning objectives
+## Week 1 learning objectives
 
 By the end of Week 1, you should be able to:
 
-1. Explain the difference between **sparse reconstruction** and **dense reconstruction**.
-2. Run COLMAP on a small image collection using the GUI or command line.
-3. Interpret the key COLMAP outputs:
+1. Run COLMAP sparse reconstruction on a small image collection.
+2. Interpret the key COLMAP sparse SfM outputs:
    - registered images,
-   - sparse points,
-   - camera poses,
-   - dense point cloud / mesh.
-4. Design a good image capture for SfM.
-5. Diagnose common failure modes such as insufficient overlap, blur, specular surfaces, textureless surfaces, repeated structures, and moving objects.
-6. Produce a concise evidence-based comparison of different data captures.
+   - sparse 3D points,
+   - camera poses / camera trajectory,
+   - feature and match information.
+3. Design a good image capture for SfM.
+4. Explain why some captures reconstruct successfully while others fail.
+5. Inspect detected features and matched image pairs using COLMAP tools.
+6. Produce a concise evidence-based comparison across several datasets.
+
+COLMAP dense stereo usually requires a CUDA-enabled NVIDIA GPU, which many laptops do not have. We will only focus on sparse reconstruction.
 
 ---
 
-## 1. Required software and provided materials
+## Required reading
 
-You will be given:
+Read the following before the second session:
 
-- A project GitHub repository.
-- A small known-good image dataset.
-- A `README.md` with installation instructions.
-- A `hello_sift.py` script.
-- A `colmap_quickstart.md` sheet.
-- A `report_template_week1.md` template.
-- Utility scripts for collecting COLMAP statistics where possible.
+Antonio Torralba, Phillip Isola, and William T. Freeman,  
+*Foundations of Computer Vision*, Chapter 44:  
+**“Multiview Geometry and Structure from Motion”**  
+https://visionbook.mit.edu/multiview.html
 
-You should use **Python 3.10+** and either **conda** or **venv**.
+Required sections:
 
-Minimum Python packages:
+- 44.1 Introduction
+- 44.2 Structure from Motion
 
-```bash
-opencv-python
-numpy
-matplotlib
-scipy
-open3d
-pycolmap   # optional, if installation works
-```
+Main idea:
 
-You must also install **COLMAP** with GUI support if possible.
+> How can multiple 2D images of the same static scene be used to recover both 3D structure and camera motion?
+
+Questions to answer as you read:
+
+1. Why multiple views contain more 3D information than a single image.
+2. Why matching or tracking points across images is central to SfM.
+3. What assumptions make SfM possible, especially static-scene assumption.
+4. How the reading connects to the sparse points and camera poses produced by COLMAP.
 
 ---
 
-## 2. Phase A — Environment setup and sanity checks
+## Required software
 
-**Estimated time:** 3–5 hours  
-**Do this first. Do not start capturing your own data before the sanity checks pass.**
 
-### Tasks
+You should use **conda** and **Python 3.10+**: https://docs.anaconda.com/miniconda/.
 
-1. Clone/download the project repository.
-2. Create a clean Python environment.
-3. Install Python dependencies.
-4. Install COLMAP.
-5. Run:
+You must also install 
+- **COLMAP** with GUI support: https://colmap.github.io/install.html.
+- pycolmap with pip: https://pypi.org/project/pycolmap/.
+
+---
+
+## Phase A — Run COLMAP
+
+Open COLMAP and verify that the GUI launches:
 
 ```bash
-python hello_sift.py --image data/example/image01.jpg
+colmap gui
 ```
+Download the "South Building" dataset from:
 
-6. Open COLMAP and verify that the GUI launches.
-7. Run COLMAP on the provided known-good mini dataset.
+https://colmap.github.io/datasets.html
 
-### Required outputs
+Run COLMAP sparse reconstruction on this dataset.
+### Create a project folder
 
-You should save the following in your Week 1 folder:
+Use a separate folder for each reconstruction:
 
 ```text
-week1/
-  setup_notes.md
-  hello_sift_output.png
-  colmap_known_good_screenshot.png
-  colmap_known_good_stats.txt
+week1/south_building/
+  images/
+  database.db
+  sparse/
+```
+
+Copy the images into `images/`.
+
+### Create a new project
+
+In COLMAP:
+
+```text
+File → New project
+```
+
+Set:
+
+```text
+Database:     week1/south_building/database.db
+Image folder: week1/south_building/images/
+```
+### Feature extraction
+
+```text
+Processing → Feature extraction
+```
+
+Recommended initial settings:
+
+```text
+Camera model: SIMPLE_RADIAL
+Single camera: enabled if all images use the same camera
+Use GPU: enabled if available; disabled if GPU causes problems
+```
+
+### Feature matching
+
+For datasets with fewer than a few hundred images, use:
+
+```text
+Processing → Feature matching → Exhaustive matching
+```
+
+Sequential matching is only recommended for long video-like sequences with correct temporal ordering.
+
+### Sparse reconstruction
+
+```text
+Reconstruction → Start reconstruction
+```
+
+After reconstruction, record:
+
+```text
+Number of input images:
+Number of registered images:
+Number of sparse 3D points:
+Whether camera poses look plausible:
+Whether the point cloud resembles the object/scene:
 ```
 
 ### Expected output
 
-For the provided known-good dataset, you should normally see:
+For a good dataset, you should normally see:
 
 - most or all images registered,
 - a visible sparse point cloud,
-- camera frustums arranged around the object/scene,
-- dense reconstruction possible, although not necessarily perfect.
+- camera frustums arranged plausibly around the object/scene.
 
-Exact numbers may differ by machine and COLMAP version. You are not being marked on matching a particular number exactly.
+Exact numbers may differ by machine and COLMAP version.
 
 ### If it does not work
 
@@ -104,56 +163,38 @@ Use this debugging order:
 3. Does feature extraction complete?
 4. Does feature matching complete?
 5. Does sparse reconstruction register at least two images?
-6. Does dense reconstruction fail only after sparse reconstruction?
+6. Does the viewer show sparse points and cameras?
 
-Record the failure point in `setup_notes.md`.
-
-If you lose more than **90 minutes** on installation, ask a demonstrator or project leader. Do not silently spend a full day debugging installation.
-
----
-
-## 3. Phase B — First full COLMAP reconstruction
-
-**Estimated time:** 3–4 hours
-
-Use the provided known-good dataset first.
-
-### Tasks
-
-1. Create a new COLMAP project.
-2. Import the known-good image set.
-3. Run feature extraction.
-4. Run feature matching.
-5. Run sparse reconstruction.
-6. Inspect the sparse model.
-7. Run dense reconstruction if your machine supports it.
-8. Export screenshots.
-
-### Required screenshots
-
-Save:
+If COLMAP says reconstruction is complete but the viewer is empty, check the log for messages such as:
 
 ```text
-known_good_sparse.png
-known_good_dense.png      # if dense reconstruction succeeds
-known_good_cameras.png
+No good initial image pair found
+Discarding reconstruction due to bad initial pair
 ```
 
-### Questions to answer in your notes
-
-1. How many images were registered?
-2. Is the camera trajectory plausible?
-3. Are the sparse points concentrated on the object/scene?
-4. Which parts of the scene are missing?
-5. Does the dense reconstruction improve the visual result compared with the sparse cloud?
+This usually means that COLMAP found too few geometrically reliable image pairs, or that the available pairs lacked sufficient parallax.
 
 ---
 
-## 4. Phase C — Systematic data acquisition experiment
 
-**Estimated time:** 7–9 hours
+## Phase B — Systematic data acquisition experiment
 
 You will capture your own image sets for a single object or small static scene.
+
+
+
+
+### Capture protocol
+
+Create multiple image sets. You will likely need to make multiple attempts for each set.
+
+#### Set 1: Good-quality capture
+
+- 60-100 images.
+- Keep the object/scene static.
+- Avoid motion blur.
+- Avoid large exposure changes.
+- Avoid zoom changes.
 
 Choose something with:
 
@@ -173,39 +214,19 @@ Good choices:
 
 Bad first choices:
 
-- a plain white mug,
-- a shiny metal bottle,
+- shiny metal object,
 - glass,
 - a mirror,
 - a blank wall,
-- a screen,
 - a moving person,
 - an object on a rotating turntable unless explicitly analysed as a failure case.
+#### Set 2: Minimal/subsampled capture
 
-### Capture protocol
+- up to 15-20 images of the same object/scene
 
-Create three image sets of the **same object/scene**.
+#### Set 3: Challenging/failure capture
 
-#### Set 1: Gold-standard capture
-
-- 35–60 images.
-- Approx. 70–85% overlap between neighbouring views.
-- Move the camera around the object/scene.
-- Keep the object/scene static.
-- Avoid motion blur.
-- Avoid large exposure changes.
-- Avoid zoom changes.
-- Use landscape orientation unless there is a good reason not to.
-
-#### Set 2: Minimal capture
-
-- 8–12 images.
-- Same object/scene.
-- Try to cover the scene with many fewer images.
-
-#### Set 3: Challenging capture
-
-Choose **one** challenge deliberately:
+Choose **three** challenges:
 
 - low light,
 - motion blur,
@@ -216,174 +237,88 @@ Choose **one** challenge deliberately:
 - object moved between shots,
 - camera mostly rotating in place with little translation.
 
-Do not mix many challenges at once. The goal is to understand one failure mode clearly.
 
-### Folder structure
+---
 
-Use:
+## Phase C — Run COLMAP on your captures
+
+Run COLMAP sparse reconstruction on:
+
+1. your best capture,
+2. your minimal/subsampled capture,
+3. your challenging/failure captures.
+
+
+COLMAP does not only produce a final reconstruction. It also stores intermediate feature and matching information.
+
+Open:
 
 ```text
-data/my_capture/
-  gold/
-  minimal/
-  challenging/
+Processing → Manage database
 ```
 
----
+For at least two datasets: your best capture and one challenging/failure capture, inspect:
 
-## 5. Phase D — Run COLMAP on your three captures
+1. detected keypoints in one representative image
+2. overlapping/matched image pairs
 
-**Estimated time:** 4–6 hours
 
-Run COLMAP on all three image sets.
-
-For each set, record:
-
-| Quantity | Meaning |
-|---|---|
-| number of input images | How many images you provided |
-| number of registered images | How many images COLMAP successfully used |
-| number of sparse points | Approximate sparse reconstruction size |
-| dense reconstruction success/failure | Whether dense stage produced usable output |
-| qualitative quality | Good / partial / poor / failed |
-| main observed failure | Your diagnosis |
-
-### Required comparison table
-
-Create a table like this:
-
-| Dataset | Input images | Registered images | Sparse points | Dense result | Main observation |
-|---|---:|---:|---:|---|---|
-| Known-good | | | | | |
-| Gold | | | | | |
-| Minimal | | | | | |
-| Challenging | | | | | |
-
-Approximate values are acceptable if exact extraction is inconvenient, but be clear how you obtained them.
 
 ---
 
-## 6. Phase E — Short theory reading
+## Intermediate Report
 
-**Estimated time:** 2–3 hours
+Submit an individual report, max **4 pages**, containing:
 
-Read enough to answer the questions below. Suggested sources:
+Practical work is performed in groups of 3, but each student must submit their own report with their own interpretation and analysis.
 
-- Hartley and Zisserman, *Multiple View Geometry*, introductory material.
-- COLMAP documentation.
-- Szeliski, *Computer Vision: Algorithms and Applications*, chapters on feature matching and structure from motion.
+1. **Answer the following questions briefly (2-3 sentences):**
+   - Why do multiple views contain more 3D information than a single image?
+   - Why are matching and tracking points across images central to SfM?
+   - Why is a static scene assumption necessary?
 
-### Concepts to understand
+2. **COLMAP reconstruction results on the South Building Dataset**
+   - sparse point-cloud screenshots
+   - camera-pose screenshots
 
-1. Sparse vs dense reconstruction.
-2. Feature detection and description.
-3. Feature matching.
-4. Camera poses.
-5. Triangulation.
-6. Bundle adjustment.
-7. Why SfM needs parallax.
-8. Why pure rotation is degenerate for 3D reconstruction.
+3. **Description of your scenes**
+   - Why did you choose the scenes?
+   - What makes the easy capture easy and the challenging capture challenging?
 
----
 
-## 7. Week 1 deliverables
+4. **Your results**
 
-Submit or prepare the following.
+   For each set, record:
 
-### Group deliverables
+   | Quantity | Meaning |
+   |---|---|
+   | number of input images | How many images you provided |
+   | number of registered images | How many images COLMAP successfully used |
+   | registration percentage | registered / input images |
+   | number of sparse points | approximate sparse reconstruction size |
+   | camera poses plausible? | yes / partial / no |
+   | qualitative quality | good / partial / poor / failed |
+   | main observed failure | your diagnosis and analysis |
 
-1. Screenshots of:
-   - known-good sparse reconstruction,
-   - your gold-standard sparse/dense reconstruction,
-   - your minimal reconstruction,
-   - your challenging reconstruction or failed attempt.
-2. A comparison table of the four datasets.
-3. A short group log of major setup/capture decisions.
 
-### Individual deliverable
+   Create a table like this:
 
-A **1-page individual reflection** answering:
+   | Dataset | Input images | Registered images | Registration % | Sparse points | Camera poses plausible? | Main observation |
+   |---|---:|---:|---:|---:|---|---|
+   | Best capture | | | | | | |
+   | Minimal/subsampled | | | | | | |
+   | Challenging/failure (3 rows) | | | | | | |
 
-1. What made your best capture successful?
-2. What caused your challenging capture to fail or degrade?
-3. What is one thing COLMAP did that you do not yet understand mathematically?
-4. What is one question you want to answer when building your own pipeline?
+   
+   - For each scene, include visualizations of the feature matches, recovered camera poses, and the 3D reconstruction.
 
----
+5. **Analysis**
+   - What made SfM work when it worked?
+   - What made it fail when it failed?
 
-## 8. Minimum success criteria
+   Refer to results from the previous section to support your arguments.
 
-By the end of Week 1, every group should have:
-
-- successfully run COLMAP on the known-good dataset,
-- captured at least one usable image set,
-- obtained at least one sparse reconstruction from their own data,
-- produced screenshots and a comparison table,
-- identified at least one SfM failure mode.
-
-Dense reconstruction is desirable but not required for minimum success if hardware prevents it.
+6. **Group Dynamics**
+   - Briefly describe the contribution of each member in your group (max 2-3 sentences per person)
 
 ---
-
-## 9. Stretch goals
-
-For groups that finish early:
-
-1. Try COLMAP command-line reconstruction.
-2. Compare SIFT vs another feature extractor if available.
-3. Try a public benchmark dataset.
-4. Export your sparse cloud or dense cloud as `.ply` and visualize it in Open3D or MeshLab.
-5. Produce a short flythrough video of the reconstructed scene.
-
----
-
-## 10. Common failure modes
-
-### Failure: Very few images are registered
-
-Likely causes:
-
-- insufficient overlap,
-- images too blurry,
-- object/scene changed between images,
-- repeated or textureless surfaces,
-- too few images.
-
-### Failure: Sparse cloud exists but looks flat or unstable
-
-Likely causes:
-
-- camera motion was mostly rotation,
-- little baseline between images,
-- scene mostly planar,
-- bad calibration.
-
-### Failure: Dense reconstruction fails
-
-Likely causes:
-
-- sparse reconstruction too weak,
-- insufficient GPU/CPU resources,
-- images too large,
-- inconsistent lighting.
-
-### Failure: Reconstruction contains duplicate surfaces or ghosting
-
-Likely causes:
-
-- moving objects,
-- object moved during capture,
-- reflective/translucent surfaces,
-- inconsistent exposure.
-
----
-
-## 11. What to bring to the Week 2 session
-
-Bring:
-
-1. Your three image sets.
-2. Your Week 1 comparison table.
-3. A pair of images from your gold-standard set with good overlap.
-4. A pair of images from your challenging set.
-5. Your questions about how COLMAP estimated camera motion and 3D points.
