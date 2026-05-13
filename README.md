@@ -1,4 +1,4 @@
-# GF4 Structure from Motion Project
+# GF4: Structure from Motion
 
 ## Compulsory Sessions
 
