@@ -1,11 +1,15 @@
 # GF4: Structure from Motion
 
+## Next Sessions
+
+- 21 May: LR 11
+- 25 May: Bank Holiday. I will be available in my office (BE4-54) on 26 May between 3-4pm if you have questions. 
+- 28 May: LR 11
+
 ## Sessions
 
 - Thursdays 9-11am
 - Mondays 11-1pm
-
-Room details and project groups are communicated separately for the current cohort.
 
 ## Objectives
 
