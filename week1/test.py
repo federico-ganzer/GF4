@@ -4,7 +4,7 @@ import shutil
 import sys
 import pycolmap
 
-
+ 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 
 

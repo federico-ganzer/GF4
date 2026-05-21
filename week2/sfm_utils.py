@@ -4,7 +4,7 @@ This file is intentionally a starter scaffold. Basic file handling and a few
 plotting helpers are provided. The core SfM-front-end steps are marked with
 TODO and should be completed by students.
 """
-
+# init
 from __future__ import annotations
 
 from dataclasses import dataclass
