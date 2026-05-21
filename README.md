@@ -1,4 +1,5 @@
-# GF4: Structure from Motion
+# Group 1  - GF4: Structure from Motion 
+(skp58) (yp299) (fg442)
 
 ## Next Sessions
 
