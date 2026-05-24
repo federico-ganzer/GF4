@@ -137,7 +137,7 @@ def detect_sift_features(
 ) -> tuple[list[cv2.KeyPoint], np.ndarray]:
     """Detect SIFT keypoints and descriptors.
 
-    TODO: Complete this function.
+    TODO: Complete this function. DONE
 
     Hints:
     - Convert the image to grayscale.
@@ -151,9 +151,16 @@ def detect_sift_features(
     gray = cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
     
     sift = cv2.SIFT_create(max_features)
-    kp, des = sift.detectAndCompute(gray)
+    kps, des = sift.detectAndCompute(gray)
     
-    return kp, des
+    if des is None or len(des) ==0:
+        return kps, np.empty((0, 128))
+    
+    if len(kps) > max_features:
+        kps = kps[:max_features]
+        des = des[:max_features]
+    
+    return kps, des
     
 
 def precompute_image_features(
@@ -163,18 +170,38 @@ def precompute_image_features(
 ) -> list[ImageFeatures]:
     """Load each image and compute SIFT features once.
 
-    TODO: Complete this function after implementing detect_sift_features.
+    TODO: Complete this function after implementing detect_sift_features. DONE
 
     Dataset mode should use this function so SIFT is not recomputed for the
     same image in every pair.
     """
-    raise NotImplementedError("TODO: implement feature precomputation")
+    features = []
+    
+    for image_path in image_paths:
+        image = cv2.imread(str(image_path))
+        if image is None:
+            raise FileNotFoundError(f'Image cannot be loaded')
+        
+        if max_image_size is not None:
+            h, w = image.shape[:2]
+            l = max(h,w)
+            if l > max_image_size:
+                scale = max_image_size / l
+                w = int(round(w*scale))
+                h = int(round(h*scale))
+                image = cv2.resize(image, (w, h), interpolation= cv2.INTER_AREA)
+    
+    
+        kps, des = detect_sift_features(image= image, max_features=max_features)
+        
+        features.append(ImageFeatures(path= image_path, image= image, keypoints= kps, descriptors= des))
+    return features
 
 
-def raw_descriptor_matches(desc1: np.ndarray, desc2: np.ndarray, ratio = 0.75) -> list[cv2.DMatch]:
+def raw_descriptor_matches(desc1: np.ndarray, desc2: np.ndarray) -> list[cv2.DMatch]:
     """Return one nearest-neighbour match per descriptor before Lowe filtering.
 
-    TODO: Complete this function.
+    TODO: Complete this function. DONE
 
     Hints:
     - Handle empty descriptor arrays by returning an empty list.
@@ -183,23 +210,15 @@ def raw_descriptor_matches(desc1: np.ndarray, desc2: np.ndarray, ratio = 0.75) -
       each descriptor in image 1.
     - Return the matches sorted by descriptor distance.
     """
+    if desc1 is None or desc2 is None or len(desc1) == 0 or len(desc2) == 0:
+        return []
     
-    bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck= True)
+    matcher = cv2.BFMatcher(cv2.NORM_L2)
+    matches = matcher.match(desc1, desc2)
+    matches = sorted(matches, key= lambda d : d.distance)
     
-    matches = bf.match(desc1, desc2, k=2)
+    return matches
     
-    good_matches = []
-    
-    for m, n in matches:
-        if m.distance < ratio*n.distance:
-            good_matches.append([m])
-    
-    good_matches = sorted(good_matches, key=lambda x: x.distance)
-    
-    return good_matches
-    
-
-
 
 def match_descriptors(
     desc1: np.ndarray,
@@ -208,7 +227,7 @@ def match_descriptors(
 ) -> list[cv2.DMatch]:
     """Match SIFT descriptors using Lowe's ratio test.
 
-    TODO: Complete this function.
+    TODO: Complete this function. DONE
 
     Hints:
     - Handle empty descriptor arrays by returning an empty list.
@@ -216,7 +235,15 @@ def match_descriptors(
     - Use knnMatch(desc1, desc2, k=2) for the ratio test.
     - Keep a match when best_distance < ratio * second_best_distance.
     """
-    raise NotImplementedError("TODO: implement descriptor matching")
+    matcher = cv2.BFMatcher(cv2.NORM_L2)
+    matches = matcher.knnMatch(desc1,desc2, k=2)
+    
+    good_matches = []
+    for d1, d2 in matches:
+        if d1.distance < ratio * d2.distance:
+            good_matches.append(d1)            
+    
+    return good_matches
 
 
 def count_raw_matches(desc1: np.ndarray, desc2: np.ndarray) -> int:
