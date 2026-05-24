@@ -147,8 +147,14 @@ def detect_sift_features(
     - If OpenCV returns slightly more than max_features, keep only the first
       max_features keypoints and matching descriptor rows.
     """
-    raise NotImplementedError("TODO: implement SIFT feature detection")
-
+    
+    gray = cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
+    
+    sift = cv2.SIFT_create(max_features)
+    kp, des = sift.detectAndCompute(gray)
+    
+    return kp, des
+    
 
 def precompute_image_features(
     image_paths: list[Path],
@@ -165,7 +171,7 @@ def precompute_image_features(
     raise NotImplementedError("TODO: implement feature precomputation")
 
 
-def raw_descriptor_matches(desc1: np.ndarray, desc2: np.ndarray) -> list[cv2.DMatch]:
+def raw_descriptor_matches(desc1: np.ndarray, desc2: np.ndarray, ratio = 0.75) -> list[cv2.DMatch]:
     """Return one nearest-neighbour match per descriptor before Lowe filtering.
 
     TODO: Complete this function.
@@ -177,7 +183,22 @@ def raw_descriptor_matches(desc1: np.ndarray, desc2: np.ndarray) -> list[cv2.DMa
       each descriptor in image 1.
     - Return the matches sorted by descriptor distance.
     """
-    raise NotImplementedError("TODO: compute raw nearest-neighbour matches")
+    
+    bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck= True)
+    
+    matches = bf.match(desc1, desc2, k=2)
+    
+    good_matches = []
+    
+    for m, n in matches:
+        if m.distance < ratio*n.distance:
+            good_matches.append([m])
+    
+    good_matches = sorted(good_matches, key=lambda x: x.distance)
+    
+    return good_matches
+    
+
 
 
 def match_descriptors(
