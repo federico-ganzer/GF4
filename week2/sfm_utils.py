@@ -237,7 +237,6 @@ def match_descriptors(
     """
     matcher = cv2.BFMatcher(cv2.NORM_L2)
     matches = matcher.knnMatch(desc1,desc2, k=2)
-    
     good_matches = []
     for d1, d2 in matches:
         if d1.distance < ratio * d2.distance:
@@ -249,12 +248,13 @@ def match_descriptors(
 def count_raw_matches(desc1: np.ndarray, desc2: np.ndarray) -> int:
     """Return the number of descriptors that can be matched before filtering.
 
-    TODO: Complete this function.
+    TODO: Complete this function. DONE
 
     A simple definition is len(raw_descriptor_matches(desc1, desc2)). This
     gives a useful denominator for comparing raw and filtered matching.
     """
-    raise NotImplementedError("TODO: count raw descriptor matches")
+    
+    return len(raw_descriptor_matches(desc1, desc2))
 
 
 def matched_keypoint_coords(
@@ -268,7 +268,11 @@ def matched_keypoint_coords(
 
     Remember: cv2.KeyPoint.pt is (x, y), not (row, column).
     """
-    raise NotImplementedError("TODO: convert matches to coordinate arrays")
+    
+    pts1 = [keypoints1[m.queryIdx] for m in matches]
+    pts2 = [keypoints2[m.trainIdx] for m in matches]
+    
+    return np.array(pts1), np.array(pts2)
 
 
 def estimate_fundamental_ransac(
