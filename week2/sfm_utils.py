@@ -310,7 +310,8 @@ def compute_epipolar_errors(
     
     
     l2s = F @ np.hstack((pts1, np.ones((len(pts1), 1)))).T
-    err = l2s - np.hstack((pts2, np.ones((len(pts2), 1)))).T
+    
+    err = np.abs(np.sum(l2s.T * np.hstack((pts2, np.ones((len(pts2), 1)))), axis=1)) / np.linalg.norm(l2s[:2], axis=0)
     
     return err
     
