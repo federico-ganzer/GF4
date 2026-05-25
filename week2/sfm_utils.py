@@ -283,13 +283,16 @@ def estimate_fundamental_ransac(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Estimate the fundamental matrix with OpenCV RANSAC.
 
-    TODO: Complete this function.
+    TODO: Complete this function. DONE
 
     Return:
     - F: 3x3 fundamental matrix
     - inlier_mask: boolean array of shape (N,)
     """
-    raise NotImplementedError("TODO: estimate fundamental matrix with RANSAC")
+    
+    F, mask = cv2.findFundamentalMat(pts1, pts2, method= cv2.FM_RANSAC, ransacReprojThreshold= threshold, confidence= confidence)
+    
+    return F, mask
 
 
 def compute_epipolar_errors(
@@ -304,7 +307,13 @@ def compute_epipolar_errors(
     For each point x1 in image 1, compute the epipolar line l2 = F x1.
     Then compute the distance from the corresponding x2 to l2.
     """
-    raise NotImplementedError("TODO: implement epipolar error calculation")
+    
+    
+    l2s = F @ np.hstack((pts1, np.ones((len(pts1), 1)))).T
+    err = l2s - np.hstack((pts2, np.ones((len(pts2), 1)))).T
+    
+    return err
+    
 
 
 def draw_keypoints(
