@@ -473,11 +473,6 @@ def analyse_image_pair(
     #UNSURE
 
 
-    
-
-
-
-
 def analyse_feature_pair(
     features1: ImageFeatures,
     features2: ImageFeatures,
@@ -492,9 +487,76 @@ def analyse_feature_pair(
     This avoids recomputing SIFT features during all-pairs dataset analysis.
     In dataset mode, save_figures is normally False, so this function should
     return metrics without creating an output folder for every image pair.
-    """
-    raise NotImplementedError("TODO: implement pair analysis from precomputed features")
 
+    3. Match descriptors with Lowe's ratio test.
+    4. Convert matches to point arrays.
+    5. Estimate F with RANSAC.
+    6. Compute epipolar errors for all filtered matches and for RANSAC inliers.
+    7. Save keypoint, raw-match, filtered-match, inlier, and epipolar-line figures.
+    8. Return a PairAnalysis object.
+    """
+    img1_name = features1.path.name
+    img2_name = features2.path.name
+    
+    raw_matches_count = count_raw_matches(features1.descriptors, features2.descriptors)
+    filtered_matches = match_descriptors(features1.descriptors, features2.descriptors, ratio)
+    
+    pts1, pts2 = matched_keypoint_coords(features1.keypoints, features2.keypoints, filtered_matches)
+    
+    F = None
+    inliers_mask = np.zeros(len(filtered_matches), dtype=bool)
+    
+    if len(filtered_matches) >= 8:
+        F, inliers = estimate_fundamental_ransac(pts1, pts2)
+        if inliers is not None:
+            inliers_mask = inliers.ravel().astype(bool)
+            
+    inlier_count = int(np.sum(inliers_mask))
+    inlier_ratio = inlier_count / len(filtered_matches) if len(filtered_matches) > 0 else 0.0
+    
+    mean_err_all = median_err_all = mean_err_inl = median_err_inl = max_err_inl = None
+    
+    if F is not None and len(filtered_matches) > 0:
+        errors = compute_epipolar_errors(F, pts1, pts2)
+        mean_err_all = float(np.mean(errors))
+        median_err_all = float(np.median(errors))
+        
+        if inlier_count > 0:
+            inlier_errors = errors[inliers_mask]
+            mean_err_inl = float(np.mean(inlier_errors))
+            median_err_inl = float(np.median(inlier_errors))
+            max_err_inl = float(np.max(inlier_errors))
+            
+    if save_figures:
+        ensure_dir(output_dir)
+        draw_keypoints(features1.image, features1.keypoints, output_dir / f"keypoints_{img1_name}")
+        draw_keypoints(features2.image, features2.keypoints, output_dir / f"keypoints_{img2_name}")
+        
+        draw_matches(features1.image, features1.keypoints, features2.image, features2.keypoints, raw_matches, output_dir / "matches_0_raw.png")
+        draw_matches(features1.image, features1.keypoints, features2.image, features2.keypoints, filtered_matches, output_dir / "matches_1_filtered.png")
+        
+        inlier_matches = [m for m, is_inlier in zip(filtered_matches, inliers_mask) if is_inlier]
+        draw_matches(features1.image, features1.keypoints, features2.image, features2.keypoints, inlier_matches, output_dir / "matches_2_inliers.png")
+        
+        if F is not None and inlier_count > 0:
+            draw_epipolar_lines(features1.image, features2.image, pts1[inliers_mask], pts2[inliers_mask], F, output_dir / "epipolar_lines.png")
+            
+    return PairAnalysis(
+        image_i=img1_name,
+        image_j=img2_name,
+        keypoints_i=len(features1.keypoints),
+        keypoints_j=len(features2.keypoints),
+        raw_matches=raw_matches_count,
+        filtered_matches=len(filtered_matches),
+        ransac_inliers=inlier_count,
+        inlier_ratio=inlier_ratio,
+        mean_epipolar_error_all=mean_err_all,
+        median_epipolar_error_all=median_err_all,
+        mean_epipolar_error_inliers=mean_err_inl,
+        median_epipolar_error_inliers=median_err_inl,
+        max_epipolar_error_inliers=max_err_inl,
+        fundamental_matrix=F.tolist() if F is not None else None,
+    )
 
 def draw_match_graph(
     rows: list[dict],
