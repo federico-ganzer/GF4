@@ -500,7 +500,8 @@ def analyse_feature_pair(
     img1_name = features1.path.name
     img2_name = features2.path.name
     
-    raw_matches_count = count_raw_matches(features1.descriptors, features2.descriptors)
+    raw_matches = raw_descriptor_matches(features1.descriptors, features2.descriptors)
+    raw_matches_count = len(raw_matches)
     filtered_matches = match_descriptors(features1.descriptors, features2.descriptors, ratio)
     
     pts1, pts2 = matched_keypoint_coords(features1.keypoints, features2.keypoints, filtered_matches)
