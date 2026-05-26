@@ -463,7 +463,19 @@ def analyse_image_pair(
     7. Save keypoint, raw-match, filtered-match, inlier, and epipolar-line figures.
     8. Return a PairAnalysis object.
     """
-    raise NotImplementedError("TODO: implement pair analysis pipeline")
+
+    # don't need to do this? done by precompute_image_features
+    # img1 = load_image(image1_path, max_image_size)
+    # img2 = load_image(image2_path, max_image_size)
+
+    features = precompute_image_features([image1_path, image2_path], max_features=max_features, max_image_size=max_image_size)
+
+    #UNSURE
+
+
+    
+
+
 
 
 def analyse_feature_pair(
