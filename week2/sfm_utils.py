@@ -470,7 +470,9 @@ def analyse_image_pair(
 
     features = precompute_image_features([image1_path, image2_path], max_features=max_features, max_image_size=max_image_size)
 
-    #UNSURE
+    return analyse_feature_pair(features[0], features[1], output_dir, ratio, save_figures)
+
+
 
 
 def analyse_feature_pair(
