@@ -210,7 +210,8 @@ def raw_descriptor_matches(desc1: np.ndarray, desc2: np.ndarray) -> list[cv2.DMa
       each descriptor in image 1.
     - Return the matches sorted by descriptor distance.
     """
-    if desc1 is None or desc2 is None or len(desc1) == 0 or len(desc2) == 0:
+
+    if desc1 is None or desc2 is None or len(desc1) == 0 or len(desc2) < 2:
         return []
     
     matcher = cv2.BFMatcher(cv2.NORM_L2)
@@ -235,6 +236,10 @@ def match_descriptors(
     - Use knnMatch(desc1, desc2, k=2) for the ratio test.
     - Keep a match when best_distance < ratio * second_best_distance.
     """
+    # added to test for < 2. Lowe's test doesn't work for < 2
+    if desc1 is None or desc2 is None or len(desc1) == 0 or len(desc2) < 2:
+        return []
+    
     matcher = cv2.BFMatcher(cv2.NORM_L2)
     matches = matcher.knnMatch(desc1,desc2, k=2)
     good_matches = []
@@ -264,15 +269,15 @@ def matched_keypoint_coords(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Convert OpenCV matches into aligned Nx2 coordinate arrays.
 
-    TODO: Complete this function.
+    TODO: Complete this function. DONE
 
     Remember: cv2.KeyPoint.pt is (x, y), not (row, column).
     """
     
-    pts1 = [keypoints1[m.queryIdx] for m in matches]
-    pts2 = [keypoints2[m.trainIdx] for m in matches]
+    pts1 = np.array([keypoints1[m.queryIdx] for m in matches])
+    pts2 = np.array([keypoints2[m.trainIdx] for m in matches])
     
-    return np.array(pts1), np.array(pts2)
+    return pts1, pts2
 
 
 def estimate_fundamental_ransac(
@@ -290,7 +295,13 @@ def estimate_fundamental_ransac(
     - inlier_mask: boolean array of shape (N,)
     """
     
-    F, mask = cv2.findFundamentalMat(pts1, pts2, method= cv2.FM_RANSAC, ransacReprojThreshold= threshold, confidence= confidence)
+    F, mask = cv2.findFundamentalMat(
+        pts1, 
+        pts2, 
+        method= cv2.FM_RANSAC, 
+        ransacReprojThreshold= threshold, 
+        confidence= confidence
+        )
     
     return F, mask
 
@@ -309,8 +320,9 @@ def compute_epipolar_errors(
     """
     
     
+    # Computes epipolar lines in image 2
     l2s = F @ np.hstack((pts1, np.ones((len(pts1), 1)))).T
-    
+    # Calculate point-to-line distance
     err = np.abs(np.sum(l2s.T * np.hstack((pts2, np.ones((len(pts2), 1)))), axis=1)) / np.linalg.norm(l2s[:2], axis=0)
     
     return err
@@ -376,7 +388,30 @@ def draw_epipolar_lines(
     - Draw the corresponding x2 point on image 2.
     - A simple Matplotlib figure with image1 and image2 side by side is enough.
     """
-    raise NotImplementedError("TODO: implement epipolar-line visualisation")
+    import matplotlib.pyplot as plt
+
+    ensure_dir(output_path.parent)
+
+    img1_rgb = cv2.cvtColor(image1, cv2.COLOR_BGR2RGB)
+    img2_rgb = cv2.cvtColor(image2, cv2.COLOR_BGR2RGB)
+
+    num_lines = min(max_lines, len(pts1))
+
+    indicies = np.random.choice(len(pts1), num_lines, replace=False)
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def analyse_image_pair(
