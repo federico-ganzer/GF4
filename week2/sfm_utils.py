@@ -313,7 +313,7 @@ def compute_epipolar_errors(
 ) -> np.ndarray:
     """Compute point-to-epipolar-line distances in image 2.
 
-    TODO: Complete this function.
+    TODO: Complete this function. DONE
 
     For each point x1 in image 1, compute the epipolar line l2 = F x1.
     Then compute the distance from the corresponding x2 to l2.
