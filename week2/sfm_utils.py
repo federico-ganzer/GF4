@@ -391,28 +391,54 @@ def draw_epipolar_lines(
     import matplotlib.pyplot as plt
 
     ensure_dir(output_path.parent)
-
+    # Make images coloured
     img1_rgb = cv2.cvtColor(image1, cv2.COLOR_BGR2RGB)
     img2_rgb = cv2.cvtColor(image2, cv2.COLOR_BGR2RGB)
 
-    num_lines = min(max_lines, len(pts1))
+    # Sample up to max_lines
+    if len(pts1) > max_lines:
+        idx = np.random.choice(len(pts1), max_lines, replace=False)
+    else:
+        idx = np.arange(len(pts1))
+    
+    pts1_sample = pts1[idx]
+    pts2_sample = pts2[idx]
 
-    indicies = np.random.choice(len(pts1), num_lines, replace=False)
+    # Compute l2 in image 2 for the sampled points
+    pts1_homog = np.hstack((pts1_sample, np.ones((len(pts1_sample), 1))))
+    l2s = (F @ pts1_homog.T).T
     
 
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
+    ax1.imshow(img1_rgb)
+    ax1.set_title("Image 1")
+    ax1.axis("off")
 
+    ax2.imshow(img2_rgb)
+    ax2.set_title("Image 2 with Epipolar Lines")
+    ax2.axis("off")
 
+    width = image2.shape[1]
 
+    for pt1, pt2, l2 in zip(pts1_sample, pts2_sample, l2s):
+        color = tuple(np.random.rand(3))
+        
+        # Draw point in image 1
+        ax1.scatter(pt1[0], pt1[1], color=color, edgecolors="k", zorder=5)
+        
+        # Draw corresponding point in image 2
+        ax2.scatter(pt2[0], pt2[1], color=color, edgecolors="k", zorder=5)
+        
+        # Draw epipolar line in image 2: ax + by + c = 0 => y = -(ax + c) / b
+        a, b, c = l2
+        if b != 0:
+            x_vals = np.array([0, width])
+            y_vals = -(a * x_vals + c) / b
+            ax2.plot(x_vals, y_vals, color=color, linewidth=1.5, alpha=0.8)
 
-
-
-
-
-
-
-
-
-
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
 
 def analyse_image_pair(
     image1_path: Path,
