@@ -230,7 +230,7 @@ def match_descriptors(
         return []
     
     matcher = cv2.BFMatcher(cv2.NORM_L2)
-    matches = matcher.knnMatch(desc1,desc2, k=2)
+    matches = matcher.knnMatch(desc1, desc2, k=2) # returns list of 2 best matching train descriptors (desc2) for each query descriptor (desc1)
     good_matches = []
     for d1, d2 in matches:
         if d1.distance < ratio * d2.distance:
