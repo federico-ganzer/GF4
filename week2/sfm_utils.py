@@ -151,7 +151,7 @@ def detect_sift_features(
     gray = cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
     
     sift = cv2.SIFT_create(max_features)
-    kps, des = sift.detectAndCompute(gray)
+    kps, des = sift.detectAndCompute(gray, mask=None)
     
     if des is None or len(des) ==0:
         return kps, np.empty((0, 128))
@@ -274,8 +274,8 @@ def matched_keypoint_coords(
     Remember: cv2.KeyPoint.pt is (x, y), not (row, column).
     """
     
-    pts1 = np.array([keypoints1[m.queryIdx] for m in matches])
-    pts2 = np.array([keypoints2[m.trainIdx] for m in matches])
+    pts1 = np.array([keypoints1[m.queryIdx].pt for m in matches], dtype= np.float32)
+    pts2 = np.array([keypoints2[m.trainIdx].pt for m in matches], dtype= np.float32)
     
     return pts1, pts2
 
@@ -300,7 +300,8 @@ def estimate_fundamental_ransac(
         pts2, 
         method= cv2.FM_RANSAC, 
         ransacReprojThreshold= threshold, 
-        confidence= confidence
+        confidence= confidence,
+        maxIters= 1000
         )
     
     return F, mask
