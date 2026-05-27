@@ -114,6 +114,7 @@ def load_image(path: Path, max_size: int | None = None) -> np.ndarray:
                 (int(round(width * scale)), int(round(height * scale))),
                 interpolation=cv2.INTER_AREA,
             )
+            
     return image
 
 
@@ -178,19 +179,7 @@ def precompute_image_features(
     features = []
     
     for image_path in image_paths:
-        image = cv2.imread(str(image_path))
-        if image is None:
-            raise FileNotFoundError(f'Image cannot be loaded')
-        
-        if max_image_size is not None:
-            h, w = image.shape[:2]
-            l = max(h,w)
-            if l > max_image_size:
-                scale = max_image_size / l
-                w = int(round(w*scale))
-                h = int(round(h*scale))
-                image = cv2.resize(image, (w, h), interpolation= cv2.INTER_AREA)
-    
+        image = load_image(image_path, max_image_size)
     
         kps, des = detect_sift_features(image= image, max_features=max_features)
         
