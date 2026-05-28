@@ -410,19 +410,27 @@ def draw_epipolar_lines(
 
     width = image2.shape[1]
 
+    # Iterate through each sampled point in image 1, and it's match in image 2
     for pt1, pt2, l2 in zip(pts1_sample, pts2_sample, l2s):
+        # assign a random colour 
         color = tuple(np.random.rand(3))
         
         # Draw point in image 1
+        # Adds a black border to make visible 
+        # zorder puts points above image
         ax1.scatter(pt1[0], pt1[1], color=color, edgecolors="k", zorder=5)
         
         # Draw corresponding point in image 2
         ax2.scatter(pt2[0], pt2[1], color=color, edgecolors="k", zorder=5)
         
         # Draw epipolar line in image 2: ax + by + c = 0 => y = -(ax + c) / b
+
         a, b, c = l2
+
         if b != 0:
+            # Define start (x=0) and end (x=width)
             x_vals = np.array([0, width])
+            # calculate corresponding y values
             y_vals = -(a * x_vals + c) / b
             ax2.plot(x_vals, y_vals, color=color, linewidth=1.5, alpha=0.8)
 
