@@ -249,6 +249,7 @@ def count_raw_matches(desc1: np.ndarray, desc2: np.ndarray) -> int:
     """
     count = 0
     for match in raw_descriptor_matches(desc1, desc2):
+        print(match.trainIdx)
         count += 1 if match.trainIdx is not None else 0
         
     return count
