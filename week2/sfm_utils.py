@@ -247,8 +247,10 @@ def count_raw_matches(desc1: np.ndarray, desc2: np.ndarray) -> int:
     A simple definition is len(raw_descriptor_matches(desc1, desc2)). This
     gives a useful denominator for comparing raw and filtered matching.
     """
-    
-    return len(raw_descriptor_matches(desc1, desc2))
+    for match in raw_descriptor_matches(desc1, desc2):
+        count += 1 if match[1] is not None else 0
+        
+    return count
 
 
 def matched_keypoint_coords(
@@ -499,7 +501,7 @@ def analyse_feature_pair(
     img2_name = features2.path.name
     
     raw_matches = raw_descriptor_matches(features1.descriptors, features2.descriptors)
-    raw_matches_count = len(raw_matches)
+    raw_matches_count = count_raw_matches(features1.descriptors, features2.descriptors)
     filtered_matches = match_descriptors(features1.descriptors, features2.descriptors, ratio)
     
     pts1, pts2 = matched_keypoint_coords(features1.keypoints, features2.keypoints, filtered_matches)
