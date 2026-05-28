@@ -247,6 +247,7 @@ def count_raw_matches(desc1: np.ndarray, desc2: np.ndarray) -> int:
     A simple definition is len(raw_descriptor_matches(desc1, desc2)). This
     gives a useful denominator for comparing raw and filtered matching.
     """
+    count = 0
     for match in raw_descriptor_matches(desc1, desc2):
         count += 1 if match[1] is not None else 0
         
