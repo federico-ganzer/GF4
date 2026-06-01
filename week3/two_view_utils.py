@@ -129,9 +129,7 @@ def estimate_essential_matrix(
     """
     
     
-    
-    
-    
+
     raise NotImplementedError("TODO: estimate essential matrix")
 
 
@@ -257,6 +255,7 @@ def build_2d3d_correspondences(
     anchor_to_new_matches: list[cv2.DMatch],
     new_keypoints: list[cv2.KeyPoint],
 ) -> tuple[np.ndarray, np.ndarray]:
+    
     """Build 2D-3D correspondences for registering a third image.
 
     The two-view reconstruction gives one 3D point for each kept feature in an
@@ -277,7 +276,18 @@ def build_2d3d_correspondences(
     - points3d: Nx3 reconstructed 3D points
     - pts_new: Nx2 feature coordinates in the new image
     """
-    raise NotImplementedError("TODO: build 2D-3D correspondences")
+    
+    points3d = np.array([], dtype=np.float64).reshape(0, 3)
+    pts_new = np.array([], dtype=np.float64).reshape(0, 2)
+    for anchor_idx, point3d in zip(reconstructed_anchor_indices, reconstructed_points):
+        for match in anchor_to_new_matches:
+            if match.queryIdx == anchor_idx:
+                new_idx = match.trainIdx
+                pts_new = np.vstack([pts_new, new_keypoints[new_idx].pt])
+                points3d = np.vstack([points3d, point3d])
+    
+    
+    return points3d, pts_new
 
 
 def estimate_camera_pose_pnp(
