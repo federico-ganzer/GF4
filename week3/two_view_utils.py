@@ -194,7 +194,7 @@ def triangulate_points(
     """
     P1, P2 = make_projection_matrices(K, np.eye(3), np.zeros(3))
     points4d = cv2.triangulatePoints(P1, P2, pts1.T, pts2.T)
-    points3d = points4d[:3, :] / points4d[3, :]
+    points3d = points4d[:3, :] / points4d[3, :] # convert from homogeneous to 3D coordinates
 
     return points3d
 
@@ -239,7 +239,7 @@ def compute_depths(
     TODO: Complete this function.
     Camera 1 has extrinsics [I|0]. Camera 2 has extrinsics [R|t].
     """
-    
+    # For every 3D point observed by camera 2, depth is the Z coordinate of the point in camera 2's frame of reference.
     return points3d[:, 2], (R @ points3d.T + t.reshape(3, 1))[2, :]
     
 
