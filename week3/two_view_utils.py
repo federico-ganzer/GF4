@@ -306,7 +306,9 @@ def estimate_camera_pose_pnp(
     - t: 3x1 world-to-camera translation for the new image
     - inlier_mask: boolean array of shape (N,)
     """
-    raise NotImplementedError("TODO: estimate camera pose with PnP")
+    
+    return cv2.solvePnPRansac(points3d, pts2d, K, distCoeffs=None, flags=cv2.SOLVEPNP_ITERATIVE, reprojectionError=threshold, confidence=confidence)
+    
 
 
 def sample_point_colours(image: np.ndarray, pts: np.ndarray) -> np.ndarray:
@@ -349,7 +351,47 @@ def draw_reprojection_overlay(
     This is one of the main ways to check whether your reconstruction is
     geometrically meaningful.
     """
-    raise NotImplementedError("TODO: draw two-view reprojection overlay")
+    
+    import matplotlib.pyplot as plt
+    
+    img1_rgb = cv2.cvtColor(image1, cv2.COLOR_BGR2RGB)
+    img2_rgb = cv2.cvtColor(image2, cv2.COLOR_BGR2RGB)
+    
+    #sample up to max_draw points for visualization
+    
+    idx = np.random.choice(len(points3d), size=min(max_draw, len(points3d)), replace=False)
+    
+    pts1_sampled = pts1[idx]
+    pts2_sampled = pts2[idx]
+    points3d_sampled = points3d[idx]
+    
+    reprojected_pts1 = project_points(points3d_sampled, K, np.eye(3), np.zeros(3))
+    reprojected_pts2 = project_points(points3d_sampled, K, R, t)
+    
+    
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+    
+    axes[0].imshow(img1_rgb)
+    axes[0].scatter(pts1_sampled[:, 0], pts1_sampled[:, 1], c='red', marker='o', label='Observed')
+    axes[0].scatter(reprojected_pts1[:, 0], reprojected_pts1[:, 1], c='blue', marker='x', label='Reprojected')
+    for i in range(len(pts1_sampled)):
+        axes[0].plot([pts1_sampled[i, 0], reprojected_pts1[i, 0]], [pts1_sampled[i, 1], reprojected_pts1[i, 1]], c='gray', linewidth=0.5)
+    axes[0].set_title('Image 1')
+    axes[0].legend()
+    
+    
+    axes[1].imshow(img2_rgb)
+    axes[1].scatter(pts2_sampled[:, 0], pts2_sampled[:, 1], c='red', marker='o', label='Observed')  
+    axes[1].scatter(reprojected_pts2[:, 0], reprojected_pts2[:, 1], c='blue', marker='x', label='Reprojected')
+    
+    for i in range(len(pts2_sampled)):
+        axes[1].plot([pts2_sampled[i, 0], reprojected_pts2[i, 0]], [pts2_sampled[i, 1], reprojected_pts2[i, 1]], c='gray', linewidth=0.5)
+    axes[1].set_title('Image 2')
+    axes[1].legend()
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200)
+    
 
 
 def draw_single_image_reprojection_overlay(
@@ -375,6 +417,28 @@ def draw_single_image_reprojection_overlay(
     This is the corresponding correctness check for the image registered by
     PnP.
     """
+    import matplotlib.pyplot as plt
+    
+    img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    
+    idx = np.random.choice(len(points3d), size=min(max_draw, len(points3d)), replace=False)
+    
+    points2d_sampled = project_points(points3d, K, R, t)[idx]
+    observed_pts_sampled = observed_pts[idx]
+    
+    
+    fig, ax = plt.subplots(figsize=(8, 6))
+    
+    ax.imshow(img_rgb)
+    
+    ax.scatter(points2d_sampled[:, 0], points2d_sampled[:, 1], c='red', marker='o', label='Observed')
+    ax.scatter(observed_pts_sampled[:, 0], observed_pts_sampled[:, 1], c='blue', marker='x', label='Reprojected')
+    ax.plot([observed_pts_sampled[:, 0], points2d_sampled[:, 0]], [observed_pts_sampled[:, 1], points2d_sampled[:, 1]], c='gray', linewidth=0.5)
+    
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=200)
+    
     raise NotImplementedError("TODO: draw single-image reprojection overlay")
 
 
