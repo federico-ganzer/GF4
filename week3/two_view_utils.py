@@ -172,7 +172,7 @@ def make_projection_matrices(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Create projection matrices P1 = K[I|0] and P2 = K[R|t].
 
-    TODO: Complete this function.
+    TODO: Complete this function. DONE
     """
     P1 = K @ np.hstack([np.eye(3), np.zeros((3, 1))])
     P2 = K @ np.hstack([R, t.reshape(3, 1)])
@@ -189,7 +189,7 @@ def triangulate_points(
 ) -> np.ndarray:
     """Triangulate 3D points from corresponding image points.
 
-    TODO: Complete this function.
+    TODO: Complete this function. DONE
 
     """
     P1, P2 = make_projection_matrices(K, np.eye(3), np.zeros(3))
