@@ -4,3 +4,7 @@ venv
 .vscode/
 .yml
 *.env
+*.pyc
+solved/
+private/
+week*/output/
