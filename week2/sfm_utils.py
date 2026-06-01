@@ -503,10 +503,8 @@ def analyse_feature_pair(
     F = None
     inliers_mask = np.zeros(len(filtered_matches), dtype=bool)
     
-    if len(filtered_matches) >= 8:
-        F, inliers = estimate_fundamental_ransac(pts1, pts2)
-        if inliers is not None:
-            inliers_mask = inliers.ravel().astype(bool)
+    F, inliers = estimate_fundamental_ransac(pts1, pts2)
+    inliers_mask = inliers.ravel().astype(bool)
             
     inlier_count = int(np.sum(inliers_mask))
     inlier_ratio = inlier_count / len(filtered_matches) if len(filtered_matches) > 0 else 0.0
