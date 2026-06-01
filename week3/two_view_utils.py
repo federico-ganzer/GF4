@@ -124,13 +124,22 @@ def estimate_essential_matrix(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Estimate the essential matrix with OpenCV RANSAC.
 
-    TODO: Complete this function.
+    TODO: Complete this function. DONE
 
     """
-    
+    E, mask = cv2.findEssentialMat(
+        pts1,
+        pts2,
+        K,
+        threshold=threshold,
+        prob=confidence,
+        method=cv2.RANSAC,
+        ransacReprojThreshold=1.0,
+    )
+
+    return E, mask
     
 
-    raise NotImplementedError("TODO: estimate essential matrix")
 
 
 def recover_relative_pose(
@@ -145,7 +154,15 @@ def recover_relative_pose(
     TODO: Complete this function.
 
     """
-    raise NotImplementedError("TODO: recover relative pose")
+    retval, R, t, mask = cv2.recoverPose(
+        E,
+        pts1,
+        pts2,
+        K,
+        mask=inlier_mask,
+    )
+
+    return R, t, mask
 
 
 def make_projection_matrices(
@@ -157,7 +174,10 @@ def make_projection_matrices(
 
     TODO: Complete this function.
     """
-    raise NotImplementedError("TODO: create projection matrices")
+    P1 = K @ np.hstack([np.eye(3), np.zeros((3, 1))])
+    P2 = K @ np.hstack([R, t.reshape(3, 1)])
+
+    return P1, P2
 
 
 def triangulate_points(
