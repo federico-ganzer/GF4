@@ -127,6 +127,10 @@ def estimate_essential_matrix(
     TODO: Complete this function.
 
     """
+    
+    
+    
+    
     raise NotImplementedError("TODO: estimate essential matrix")
 
 
