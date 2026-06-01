@@ -128,9 +128,6 @@ def estimate_essential_matrix(
 
     """
     
-    
-    
-    
     raise NotImplementedError("TODO: estimate essential matrix")
 
 
@@ -184,9 +181,12 @@ def project_points(
 ) -> np.ndarray:
     """Project 3D points into an image using camera matrix K[R|t].
 
-    TODO: Complete this function.
+    TODO: Complete this function. DONE
     """
-    raise NotImplementedError("TODO: project 3D points")
+
+    return cv2.projectPoints(points3d, cv2.Rodrigues(R)[0], t, K, distCoeffs=None)[0].reshape(-1, 2)
+    
+    
 
 
 def compute_reprojection_errors(
@@ -199,9 +199,11 @@ def compute_reprojection_errors(
     """Compute Euclidean reprojection error in pixels.
 
     TODO: Complete this function by projecting points3d and comparing with
-    observed_pts.
+    observed_pts.  DONE
     """
-    raise NotImplementedError("TODO: compute reprojection errors")
+    
+    return np.linalg.norm(project_points(points3d, K, R, t) - observed_pts, axis=1)
+    
 
 
 def compute_depths(
@@ -210,12 +212,13 @@ def compute_depths(
     t: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute point depths in camera 1 and camera 2 coordinates.
-
     TODO: Complete this function.
-
     Camera 1 has extrinsics [I|0]. Camera 2 has extrinsics [R|t].
     """
-    raise NotImplementedError("TODO: compute point depths")
+    
+    return points3d[:, 2], (R @ points3d.T + t.reshape(3, 1))[2, :]
+    
+
 
 
 def filter_reconstructed_points(
@@ -228,14 +231,20 @@ def filter_reconstructed_points(
 ) -> np.ndarray:
     """Return a boolean mask for valid triangulated points.
 
-    TODO: Complete this function.
+    TODO: Complete this function. DONE
 
     Keep points that:
     - have finite 3D coordinates,
     - have positive depth in both cameras,
     - have reprojection error at most max_reprojection_error in both images.
     """
-    raise NotImplementedError("TODO: filter reconstructed points")
+    
+    finite_mask = np.isfinite(points3d).all(axis=1)
+    depth_mask = (compute_depths(points3d, R, t)[0] > 0) & (compute_depths(points3d, R, t)[1] > 0)
+    reprojection_mask = (errors1 <= max_reprojection_error) & (errors2 <= max_reprojection_error)
+    
+    return finite_mask & depth_mask & reprojection_mask 
+    
 
 
 def build_2d3d_correspondences(
