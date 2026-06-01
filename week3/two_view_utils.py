@@ -116,38 +116,59 @@ def make_camera_matrix(
 
 
 def estimate_essential_matrix(
-    pts1: np.ndarray,
-    pts2: np.ndarray,
-    K: np.ndarray,
-    threshold: float = 1.0,
-    confidence: float = 0.999,
+    pts1: np.ndarray, # points 1
+    pts2: np.ndarray, # points 2
+    K: np.ndarray, # camera matrix
+    threshold: float = 1.0, 
+    confidence: float = 0.999, # prob in cv2.findEssentialMat
 ) -> tuple[np.ndarray, np.ndarray]:
     """Estimate the essential matrix with OpenCV RANSAC.
 
-    TODO: Complete this function.
+    TODO: Complete this function. DONE
 
     """
     
-    
-    
-    
-    
-    raise NotImplementedError("TODO: estimate essential matrix")
+    E, mask = cv2.findEssentialMat(
+        pts1,
+        pts2,
+        K,
+        threshold=threshold,
+        prob=confidence,
+        method=cv2.RANSAC,
+        ransacReprojThreshold=1.0,
+    )
+
+    return E, mask
+
 
 
 def recover_relative_pose(
-    E: np.ndarray,
+    E: np.ndarray,                          # essential matrix
     pts1: np.ndarray,
     pts2: np.ndarray,
-    K: np.ndarray,
+    K: np.ndarray,                          # camera matrix
     inlier_mask: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Recover relative camera pose from an essential matrix.
 
-    TODO: Complete this function.
+    TODO: Complete this function. DONE
 
     """
-    raise NotImplementedError("TODO: recover relative pose")
+    
+    # not sure what the retval is from documentation
+    # AI said it was how many of your input points were verified to 
+    # be in front of both cameras for the winning solution.
+    retval, R, t, mask = cv2.recoverPose(
+        E,
+        pts1,
+        pts2,
+        K,
+        mask=inlier_mask,
+    )
+
+    return R, t, mask
+
+
 
 
 def make_projection_matrices(
@@ -160,6 +181,11 @@ def make_projection_matrices(
     TODO: Complete this function.
     """
     raise NotImplementedError("TODO: create projection matrices")
+    
+    P1 = K @ np.hstack([np.eye(3), np.zeros((3, 1))])
+    P2 = K @ np.hstack([R, t.reshape(3, 1)])
+
+    return P1, P2
 
 
 def triangulate_points(
@@ -185,12 +211,9 @@ def project_points(
 ) -> np.ndarray:
     """Project 3D points into an image using camera matrix K[R|t].
 
-    TODO: Complete this function. DONE
+    TODO: Complete this function.
     """
-
-    return cv2.projectPoints(points3d, cv2.Rodrigues(R)[0], t, K, distCoeffs=None)[0].reshape(-1, 2)
-    
-    
+    raise NotImplementedError("TODO: project 3D points")
 
 
 def compute_reprojection_errors(
@@ -203,11 +226,9 @@ def compute_reprojection_errors(
     """Compute Euclidean reprojection error in pixels.
 
     TODO: Complete this function by projecting points3d and comparing with
-    observed_pts.  DONE
+    observed_pts.
     """
-    
-    return np.linalg.norm(project_points(points3d, K, R, t) - observed_pts, axis=1)
-    
+    raise NotImplementedError("TODO: compute reprojection errors")
 
 
 def compute_depths(
@@ -216,13 +237,12 @@ def compute_depths(
     t: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Compute point depths in camera 1 and camera 2 coordinates.
+
     TODO: Complete this function.
+
     Camera 1 has extrinsics [I|0]. Camera 2 has extrinsics [R|t].
     """
-    
-    return points3d[:, 2], (R @ points3d.T + t.reshape(3, 1))[2, :]
-    
-
+    raise NotImplementedError("TODO: compute point depths")
 
 
 def filter_reconstructed_points(
@@ -235,20 +255,14 @@ def filter_reconstructed_points(
 ) -> np.ndarray:
     """Return a boolean mask for valid triangulated points.
 
-    TODO: Complete this function. DONE
+    TODO: Complete this function.
 
     Keep points that:
     - have finite 3D coordinates,
     - have positive depth in both cameras,
     - have reprojection error at most max_reprojection_error in both images.
     """
-    
-    finite_mask = np.isfinite(points3d).all(axis=1)
-    depth_mask = (compute_depths(points3d, R, t)[0] > 0) & (compute_depths(points3d, R, t)[1] > 0)
-    reprojection_mask = (errors1 <= max_reprojection_error) & (errors2 <= max_reprojection_error)
-    
-    return finite_mask & depth_mask & reprojection_mask 
-    
+    raise NotImplementedError("TODO: filter reconstructed points")
 
 
 def build_2d3d_correspondences(
