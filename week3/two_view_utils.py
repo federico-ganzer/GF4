@@ -192,7 +192,12 @@ def triangulate_points(
     TODO: Complete this function.
 
     """
-    raise NotImplementedError("TODO: triangulate 3D points")
+    P1, P2 = make_projection_matrices(K, np.eye(3), np.zeros(3))
+    points4d = cv2.triangulatePoints(P1, P2, pts1.T, pts2.T)
+    points3d = points4d[:3, :] / points4d[3, :]
+
+    return points3d
+
 
 
 def project_points(
