@@ -134,7 +134,6 @@ def estimate_essential_matrix(
         threshold=threshold,
         prob=confidence,
         method=cv2.RANSAC,
-        ransacReprojThreshold=1.0,
     )
 
     return E, mask
@@ -154,13 +153,18 @@ def recover_relative_pose(
     TODO: Complete this function.
 
     """
-    retval, R, t, mask = cv2.recoverPose(
+    pts1 = pts1.reshape(-1, 2).astype(np.float32)
+    pts2 = pts2.reshape(-1, 2).astype(np.float32)
+    
+    _, R, t, mask = cv2.recoverPose(
         E,
         pts1,
         pts2,
         K,
         mask=inlier_mask,
     )
+    
+    # first value is number of inliers.
 
     return R, t, mask
 
@@ -192,10 +196,12 @@ def triangulate_points(
     TODO: Complete this function. DONE
 
     """
-    P1, P2 = make_projection_matrices(K, np.eye(3), np.zeros(3))
+    P1, P2 = make_projection_matrices(K, R, t)
     points4d = cv2.triangulatePoints(P1, P2, pts1.T, pts2.T)
-    points3d = points4d[:3, :] / points4d[3, :] # convert from homogeneous to 3D coordinates
-
+    points3d = points4d[:3] / points4d[3] # convert from homogeneous to 3D coordinates
+    
+    points3d = points3d.reshape(3, -1).T
+    #print(points3d.shape)
     return points3d
 
 
@@ -210,7 +216,26 @@ def project_points(
 
     TODO: Complete this function. DONE
     """
-    raise cv2.projectPoints(points3d, cv2.Rodrigues(R)[0], t, K, distCoeffs=None)[0].reshape(-1, 2)
+    
+    #print("points3d:", points3d.shape, points3d.dtype)
+    #print("R:", R.shape, R.dtype)
+    #print("t:", t.shape, t.dtype)
+    #print("K:", K.shape, K.dtype)
+    
+    '''
+    points4d shape: (4, 1, 38)
+    points3d shape after divide: (3, 1, 38)
+    points3d: (3, 1, 38) float32
+    R: (3, 3) float64
+    t: (3, 1) float64
+    K: (3, 3) float64
+    '''
+    
+    #print(R)
+    rvec, _ = cv2.Rodrigues(R)
+    projected_pts, _ = cv2.projectPoints(points3d, rvec, t, K, distCoeffs=None)
+    
+    return projected_pts.reshape(-1, 2)
 
 
 def compute_reprojection_errors(
@@ -226,7 +251,10 @@ def compute_reprojection_errors(
     observed_pts.  DONE
     """
     
-    return np.linalg.norm(project_points(points3d, K, R, t) - observed_pts, axis=1)
+    projected_pts = project_points(points3d, K, R, t)
+    err = projected_pts - observed_pts.reshape(-1, 2)
+    err = np.linalg.norm(err, axis=1)
+    return err
     
 
 
@@ -240,9 +268,9 @@ def compute_depths(
     Camera 1 has extrinsics [I|0]. Camera 2 has extrinsics [R|t].
     """
     # For every 3D point observed by camera 2, depth is the Z coordinate of the point in camera 2's frame of reference.
-    return points3d[:, 2], (R @ points3d.T + t.reshape(3, 1))[2, :]
     
-
+    return points3d[:, 2], (R @ points3d.T + t).T[:, 2]
+    
 
 
 def filter_reconstructed_points(
@@ -264,10 +292,17 @@ def filter_reconstructed_points(
     """
     
     finite_mask = np.isfinite(points3d).all(axis=1)
-    depth_mask = (compute_depths(points3d, R, t)[0] > 0) & (compute_depths(points3d, R, t)[1] > 0)
-    reprojection_mask = (errors1 <= max_reprojection_error) & (errors2 <= max_reprojection_error)
+    #print(finite_mask.shape)
+    z1, z2 = compute_depths(points3d, R, t)
+    depth_mask = (z1 > 0) & (z2 > 0)
+    #print(depth_mask.shape)
     
-    return finite_mask & depth_mask & reprojection_mask 
+    
+    reprojection_mask = ((errors1 <= max_reprojection_error) & (errors2 <= max_reprojection_error))
+    
+    #print((finite_mask & depth_mask & reprojection_mask).shape)
+    
+    return (finite_mask & depth_mask & reprojection_mask)
     
 
 
