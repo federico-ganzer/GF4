@@ -202,7 +202,8 @@ def triangulate_points(
     P1, P2 = make_projection_matrices(K, R, t)
     points4d = cv2.triangulatePoints(P1, P2, pts1.T, pts2.T)
     
-    points3d = points4d[:3] / points4d[3] # convert from homogeneous to 3D coordinates
+    # convert from homogeneous to 3D coordinates
+    points3d = points4d[:3] / points4d[3] 
     
     points3d = points3d.reshape(3, -1).T
     #print(points3d.shape)
@@ -373,8 +374,21 @@ def estimate_camera_pose_pnp(
     - t: 3x1 world-to-camera translation for the new image
     - inlier_mask: boolean array of shape (N,)
     """
+
+    success, rvec, tvec, inliers = cv2.solvePnPRansac(
+        points3d, 
+        pts2d, 
+        K, 
+        distCoeffs=None, 
+        flags=cv2.SOLVEPNP_ITERATIVE, 
+        reprojectionError=threshold, 
+        confidence=confidence
+        )
+
+    R3, _ = cv2.Rodrigues(rvec)
     
-    return cv2.solvePnPRansac(points3d, pts2d, K, distCoeffs=None, flags=cv2.SOLVEPNP_ITERATIVE, reprojectionError=threshold, confidence=confidence)
+    return R3, tvec, inliers
+
     
 
 
