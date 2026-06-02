@@ -1,0 +1,2 @@
+image_k,anchor_matches,pnp_correspondences,pnp_inliers,median_reprojection_error_px,mean_reprojection_error_px,focal_length_px
+IMG_5581.JPG,3659,869,711,1.8540402003966812,2.241219956863448,1920.0

@@ -382,8 +382,10 @@ def run(args: argparse.Namespace) -> tuple[TwoViewResult, ThirdViewResult | None
             threshold=args.pnp_ransac_threshold,
             confidence=args.confidence,
         )
+        print(pnp_mask)
         pnp_points = pnp_points3d[pnp_mask]
         pts3_inliers = pts3[pnp_mask]
+        print(pts3_inliers)
         pnp_errors = compute_reprojection_errors(pnp_points, pts3_inliers, K3, R3, t3)
 
         draw_single_image_reprojection_overlay(

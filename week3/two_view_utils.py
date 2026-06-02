@@ -375,6 +375,8 @@ def estimate_camera_pose_pnp(
     - inlier_mask: boolean array of shape (N,)
     """
 
+    # OpenCV's solvePnPRansac returns the rotation as a Rodrigues vector, 
+    # so we need to convert it to a rotation matrix with cv2.Rodrigues.
     success, rvec, tvec, inliers = cv2.solvePnPRansac(
         points3d, 
         pts2d, 
@@ -386,8 +388,11 @@ def estimate_camera_pose_pnp(
         )
 
     R3, _ = cv2.Rodrigues(rvec)
+
+    inlier_mask = np.zeros(points3d.shape[0], dtype=bool)
+    inlier_mask[inliers.flatten()] = True
     
-    return R3, tvec, inliers
+    return R3, tvec, inlier_mask
 
     
 
@@ -512,6 +517,8 @@ def draw_single_image_reprojection_overlay(
     fig, ax = plt.subplots(figsize=(8, 6))
     
     ax.imshow(img_rgb)
+
+    print(observed_pts_sampled.shape, points2d_sampled.shape)
     
     ax.scatter(points2d_sampled[:, 0], points2d_sampled[:, 1], c='red', marker='o', label='Observed')
     ax.scatter(observed_pts_sampled[:, 0], observed_pts_sampled[:, 1], c='blue', marker='x', label='Reprojected')
@@ -521,7 +528,6 @@ def draw_single_image_reprojection_overlay(
     plt.tight_layout()
     plt.savefig(output_path, dpi=200)
     
-    raise NotImplementedError("TODO: draw single-image reprojection overlay")
 
 
 def _camera_center(R: np.ndarray, t: np.ndarray) -> np.ndarray:
