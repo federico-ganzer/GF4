@@ -1,0 +1,2 @@
+image_i,image_j,filtered_matches,essential_inliers,pose_inliers,triangulated_points,positive_depth_points,kept_points,median_reprojection_error_px,mean_reprojection_error_px,focal_length_px
+IMG_5795.JPG,IMG_5803.JPG,38,19,19,19,19,19,0.2563839852809906,0.26692286133766174,1920.0

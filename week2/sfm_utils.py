@@ -263,9 +263,8 @@ def matched_keypoint_coords(
     Remember: cv2.KeyPoint.pt is (x, y), not (row, column).
     """
     
-    pts1 = np.array([keypoints1[m.queryIdx].pt for m in matches], dtype= np.float32)
-    pts2 = np.array([keypoints2[m.trainIdx].pt for m in matches], dtype= np.float32)
-    
+    pts1 = np.array([keypoints1[m.queryIdx].pt for m in matches], dtype= np.float32).reshape(-1, 2) 
+    pts2 = np.array([keypoints2[m.trainIdx].pt for m in matches], dtype= np.float32).reshape(-1, 2) 
     return pts1, pts2
 
 

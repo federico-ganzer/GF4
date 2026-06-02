@@ -166,7 +166,7 @@ def recover_relative_pose(
     
     # first value is number of inliers.
 
-    return R, t, mask
+    return R, t, mask.ravel().astype(bool) # openCV returns a mask of shape (N, 1) with values 0 or 255, we want a boolean array of shape (N,)
 
 
 def make_projection_matrices(
@@ -196,8 +196,12 @@ def triangulate_points(
     TODO: Complete this function. DONE
 
     """
+    pts1 = pts1.reshape(-1, 2).astype(np.float32) # These need to be correct shape otherwise triangulation bugs out
+    pts2 = pts2.reshape(-1, 2).astype(np.float32) # These need to be correct shape otherwise triangulation bugs out
+    
     P1, P2 = make_projection_matrices(K, R, t)
     points4d = cv2.triangulatePoints(P1, P2, pts1.T, pts2.T)
+    
     points3d = points4d[:3] / points4d[3] # convert from homogeneous to 3D coordinates
     
     points3d = points3d.reshape(3, -1).T
@@ -248,10 +252,17 @@ def compute_reprojection_errors(
     """Compute Euclidean reprojection error in pixels.
 
     TODO: Complete this function by projecting points3d and comparing with
-    observed_pts.  DONE
+    observed_pts.
     """
     
     projected_pts = project_points(points3d, K, R, t)
+    
+    #print(projected_pts)
+    
+    #projected_obs_pts = project_points(observed_pts, K, R, t)
+    #print(projected_obs_pts)
+    
+    
     err = projected_pts - observed_pts.reshape(-1, 2)
     err = np.linalg.norm(err, axis=1)
     return err
@@ -298,9 +309,9 @@ def filter_reconstructed_points(
     #print(depth_mask.shape)
     
     
-    reprojection_mask = ((errors1 <= max_reprojection_error) & (errors2 <= max_reprojection_error))
+    reprojection_mask = ((errors1 <= max_reprojection_error) & (errors2 <= max_reprojection_error)) 
     
-    #print((finite_mask & depth_mask & reprojection_mask).shape)
+    #print((finite_mask & depth_mask & reprojection_mask))
     
     return (finite_mask & depth_mask & reprojection_mask)
     
@@ -343,7 +354,6 @@ def build_2d3d_correspondences(
                 pts_new = np.vstack([pts_new, new_keypoints[new_idx].pt])
                 points3d = np.vstack([points3d, point3d])
     
-    
     return points3d, pts_new
 
 
@@ -369,6 +379,7 @@ def estimate_camera_pose_pnp(
 
 
 def sample_point_colours(image: np.ndarray, pts: np.ndarray) -> np.ndarray:
+    pts = pts.reshape(-1, 2)
     if len(pts) == 0:
         return np.empty((0, 3), dtype=np.uint8)
 
@@ -418,8 +429,8 @@ def draw_reprojection_overlay(
     
     idx = np.random.choice(len(points3d), size=min(max_draw, len(points3d)), replace=False)
     
-    pts1_sampled = pts1[idx]
-    pts2_sampled = pts2[idx]
+    pts1_sampled = pts1[idx].reshape(-1, 2)
+    pts2_sampled = pts2[idx].reshape(-1, 2)
     points3d_sampled = points3d[idx]
     
     reprojected_pts1 = project_points(points3d_sampled, K, np.eye(3), np.zeros(3))

@@ -226,7 +226,9 @@ def run(args: argparse.Namespace) -> tuple[TwoViewResult, ThirdViewResult | None
     R, t, pose_mask = recover_relative_pose(E, pts1, pts2, K, inlier_mask=essential_mask)
 
     pts1_pose = pts1[pose_mask]
+    #print(pts1_pose)
     pts2_pose = pts2[pose_mask]
+    #print(pts2_pose)
     pose_matches = [match for match, keep in zip(matches, pose_mask) if keep]
 
     if hasattr(week2, "draw_matches"):
@@ -254,12 +256,13 @@ def run(args: argparse.Namespace) -> tuple[TwoViewResult, ThirdViewResult | None
     positive_depth = (depths1 > 0) & (depths2 > 0)
 
     kept_points = points3d[keep]
+    #print(kept_points)
     kept_colours = sample_point_colours(features1.image, pts1_pose[keep])
     kept_errors = 0.5 * (errors1[keep] + errors2[keep])
     kept_pose_matches = [match for match, keep_point in zip(pose_matches, keep) if keep_point]
     kept_image1_indices = np.array([match.queryIdx for match in kept_pose_matches], dtype=int)
     kept_image2_indices = np.array([match.trainIdx for match in kept_pose_matches], dtype=int)
-
+    
     draw_reprojection_overlay(
         features1.image,
         features2.image,
