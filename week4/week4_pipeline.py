@@ -346,6 +346,26 @@ def choose_next_image(
     return best_image
 
 
+def triangulate_and_append_new_points(
+    features, 
+    state: ReconstructionState,
+    image_id: int,
+    all_matches: dict[tuple[int, int], list],
+    K: np.ndarray,
+    max_reprojection_error: float,
+) -> int:
+    """
+    Finds unused 2D matches between the newly registered image and all previously 
+    registered images, triangulates them into 3D, and updates the global state.
+    """
+    R_new = state.camera_rotations[image_id]
+    t_new = state.camera_translations[image_id]
+    P_new = K @ np.hstack((R_new, t_new))
+
+    new_points_count = 0
+    for reg_id in state.registered_images:
+
+
 def register_next_image(
     week2,
     features,
