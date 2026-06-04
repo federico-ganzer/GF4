@@ -150,8 +150,9 @@ def detect_sift_features(
     """
     
     gray = cv2.cvtColor(image,cv2.COLOR_BGR2GRAY)
-    
+    # creates sift features
     sift = cv2.SIFT_create(max_features)
+    # finds keypoints and descriptors
     kps, des = sift.detectAndCompute(gray, mask=None)
     
     if des is None or len(des) ==0:
@@ -262,8 +263,10 @@ def matched_keypoint_coords(
 
     Remember: cv2.KeyPoint.pt is (x, y), not (row, column).
     """
-    
+    # finds point coordinates for each match and reshapes to Nx2
+    # coordinates in image 1 
     pts1 = np.array([keypoints1[m.queryIdx].pt for m in matches], dtype= np.float32).reshape(-1, 2) 
+    # coordinates in image 2 
     pts2 = np.array([keypoints2[m.trainIdx].pt for m in matches], dtype= np.float32).reshape(-1, 2) 
     return pts1, pts2
 
