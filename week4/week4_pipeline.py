@@ -368,7 +368,6 @@ def triangulate_and_append_new_points(
     new_points_count = 0
     for reg_id in state.registered_images:
 
-
 def register_next_image(
     week2,
     features,
@@ -379,7 +378,7 @@ def register_next_image(
     pnp_ransac_threshold: float,
     confidence: float,
     min_pnp_inliers: int,
-) -> bool:
+    ) -> bool:
     correspondences3d = []
     correspondences2d = []
     for reg_id in state.registered_images:
