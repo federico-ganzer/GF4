@@ -202,7 +202,8 @@ def triangulate_points(
     P1, P2 = make_projection_matrices(K, R, t)
     points4d = cv2.triangulatePoints(P1, P2, pts1.T, pts2.T)
     
-    points3d = points4d[:3] / points4d[3] # convert from homogeneous to 3D coordinates
+    # convert from homogeneous to 3D coordinates
+    points3d = points4d[:3] / points4d[3] 
     
     points3d = points3d.reshape(3, -1).T
     #print(points3d.shape)
@@ -373,8 +374,26 @@ def estimate_camera_pose_pnp(
     - t: 3x1 world-to-camera translation for the new image
     - inlier_mask: boolean array of shape (N,)
     """
+
+    # OpenCV's solvePnPRansac returns the rotation as a Rodrigues vector, 
+    # so we need to convert it to a rotation matrix with cv2.Rodrigues.
+    success, rvec, tvec, inliers = cv2.solvePnPRansac(
+        points3d, 
+        pts2d, 
+        K, 
+        distCoeffs=None, 
+        flags=cv2.SOLVEPNP_ITERATIVE, 
+        reprojectionError=threshold, 
+        confidence=confidence
+        )
+
+    R3, _ = cv2.Rodrigues(rvec)
+
+    inlier_mask = np.zeros(points3d.shape[0], dtype=bool)
+    inlier_mask[inliers.flatten()] = True
     
-    return cv2.solvePnPRansac(points3d, pts2d, K, distCoeffs=None, flags=cv2.SOLVEPNP_ITERATIVE, reprojectionError=threshold, confidence=confidence)
+    return R3, tvec, inlier_mask
+
     
 
 
@@ -496,6 +515,8 @@ def draw_single_image_reprojection_overlay(
     fig, ax = plt.subplots(figsize=(8, 6))
     
     ax.imshow(img_rgb)
+
+    # print(observed_pts_sampled.shape, points2d_sampled.shape)
     
     ax.scatter(points2d_sampled[:, 0], points2d_sampled[:, 1], c='red', marker='o', label='Observed')
     ax.scatter(observed_pts_sampled[:, 0], observed_pts_sampled[:, 1], c='blue', marker='x', label='Reprojected')

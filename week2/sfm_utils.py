@@ -529,7 +529,12 @@ def analyse_feature_pair(
         draw_matches(features1.image, features1.keypoints, features2.image, features2.keypoints, raw_matches, output_dir / "matches_0_raw.png")
         draw_matches(features1.image, features1.keypoints, features2.image, features2.keypoints, filtered_matches, output_dir / "matches_1_filtered.png")
         
-        inlier_matches = [m for m, is_inlier in zip(filtered_matches, inliers_mask) if is_inlier]
+        inlier_matches = []
+        for m, is_inlier in zip(filtered_matches, inliers_mask):
+            if is_inlier:
+                inlier_matches.append(m)
+
+
         draw_matches(features1.image, features1.keypoints, features2.image, features2.keypoints, inlier_matches, output_dir / "matches_2_inliers.png")
         
         if F is not None and inlier_count > 0:
