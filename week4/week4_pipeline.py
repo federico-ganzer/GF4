@@ -367,7 +367,16 @@ def triangulate_and_append_new_points(
 
     new_points_count = 0
     for reg_id in state.registered_images:
+        if reg_id == image_id:
+            continue
 
+<<<<<<< HEAD
+=======
+        # Retrieve matches between the newly registered image and this registered image
+        pair = (reg_id, image_id) if (reg_id, image_id) in all_matches else (image_id, reg_id)
+        matches = all_matches.get(pair)
+
+>>>>>>> a9e77bf46eba080a30e625f81dc8413e46cfaba5
 def register_next_image(
     week2,
     features,
