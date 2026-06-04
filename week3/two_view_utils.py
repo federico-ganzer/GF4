@@ -460,8 +460,6 @@ def draw_reprojection_overlay(
     plt.tight_layout()
     plt.savefig(output_path, dpi=200)
     
-
-
 def draw_single_image_reprojection_overlay(
     image: np.ndarray,
     observed_pts: np.ndarray,
@@ -507,7 +505,6 @@ def draw_single_image_reprojection_overlay(
     plt.tight_layout()
     plt.savefig(output_path, dpi=200)
     
-    raise NotImplementedError("TODO: draw single-image reprojection overlay")
 
 
 def _camera_center(R: np.ndarray, t: np.ndarray) -> np.ndarray:
