@@ -31,4 +31,12 @@ from week3.two_view_utils import (
 )
 
 
+'''
+1. Compute RANSAC Inlier Graph
+2. Start with best pair - This becomes your anchor-set
+3. Choose image in unused-set with most ransac inliers to a single image in the anchor-set
+4. Perform 2d_3d_correspondence between unused image and anchor pair
+5. image gets added to anchor set
+6. Redo from step 3
+'''
 
