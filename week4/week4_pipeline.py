@@ -53,6 +53,9 @@ class ReconstructionState:
     tracks: dict[tuple[int, int], int]
     points3d: np.ndarray
     point_colors: np.ndarray
+    
+    
+
 
 
 def load_week2_module(week2_dir: Path):
@@ -322,17 +325,16 @@ def build_2d3d_correspondences_to_model(
 
 
 def choose_next_image(
-    features,
     state: ReconstructionState,
     all_matches: dict[tuple[int, int], list],
 ) -> int | None:
     best_image = None
     best_support = 0
-    for image_id in state.unregistered_images:
+    for image_id in state.unregistered_images: # search all images in un-registered images
         support = 0
-        for registered_id in state.registered_images:
+        for registered_id in state.registered_images:  
             pair = (registered_id, image_id) if (registered_id, image_id) in all_matches else (image_id, registered_id)
-            matches = all_matches.get(pair)
+            matches = all_matches.get(pair) # find matches in this pair
             if matches is None:
                 continue
             support += sum(
@@ -343,6 +345,7 @@ def choose_next_image(
         if support > best_support:
             best_support = support
             best_image = image_id
+    
     return best_image
 
 
@@ -426,6 +429,7 @@ def register_next_image(
 
     # TODO: triangulate new points between image_id and registered views,
     # update state.tracks and state.points3d accordingly.
+    
     return True
 
 
