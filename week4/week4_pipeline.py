@@ -5,6 +5,7 @@ import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
 import sys
+import cv2
 
 import numpy as np
 
@@ -32,6 +33,7 @@ from week3.two_view_utils import (
 )
 
 DEFAULT_WEEK2_DIR = Path(__file__).resolve().parents[1] / "week2"
+DEFAULT_WEEK3_DIR = Path(__file__).resolve().parents[1] / "week3"
 
 
 @dataclass
@@ -124,6 +126,18 @@ def load_week2_module(week2_dir: Path):
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def load_week3_module(week3_dir: Path):
+    """week 3 modules loaded"""
+    module_path = Path(week3_dir) / "two_view_utils.py"
+    if not module_path.exists():
+        raise FileNotFoundError(f"Could not find Week 3 two_view_utils.py: {module_path}")
+
+    spec = importlib.util.spec_from_file_location("week3_two_view_utils", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not import Week 3 module from {module_path}")
+
 
 
 def parse_args() -> argparse.Namespace:
@@ -381,23 +395,89 @@ def choose_next_image(
     state: ReconstructionState,
     all_matches: dict[tuple[int, int], list],
 ) -> int | None:
+    """
+    TODO: change to a triplet-based selection algorithm that selects the 
+    unregistered image with the most 2D matches to already registered images, 
+    where the 2D matches must be to keypoints that are part of existing 3D 
+    tracks in the model. This will ensure that the next image has enough overlap 
+    with the existing reconstruction to be successfully registered with PnP.
+    """
     best_image = None
     best_support = 0
-    for image_id in state.unregistered_images: # search all images in un-registered images
-        support = 0
-        for registered_id in state.registered_images:  
-            pair = (registered_id, image_id) if (registered_id, image_id) in all_matches else (image_id, registered_id)
-            matches = all_matches.get(pair) # find matches in this pair
+
+    # map each 3D point ID to the set of registered images that observe it
+    point_observers = {}
+    for (img_id, kp_idx), point_id in state.tracks.items():
+        if img_id in state.registered_images:
+            if point_id not in point_observers:
+                point_observers[point_id] = set()
+            point_observers[point_id].add(img_id)
+
+    for image_id in state.unregistered_images:
+        # To gather all unique 3D points that this unregistered image matches
+        # to across all registered images, we can use a set.
+        visible_points = set()
+        for registered_id in state.registered_images:
+            # safety net against missing pair in all_matches
+            if (registered_id, image_id) in all_matches:
+                pair = (registered_id, image_id)
+            else:
+                pair = (image_id, registered_id)
+
+            matches = all_matches.get(pair)
             if matches is None:
                 continue
-            support += sum(
-                1
-                for match in matches
-                if (registered_id, match.queryIdx if pair[0] == registered_id else match.trainIdx) in state.tracks
-            )
-        if support > best_support:
-            best_support = support
+            
+            for match in matches:
+                # Determine which side of the pair is the registered image
+                if pair[0] == registered_id:
+                    key = (registered_id, match.queryIdx)
+                else:
+                    key = (registered_id, match.trainIdx)
+
+                if key in state.tracks:
+                    point_id = state.tracks[key]
+                    visible_points.add(point_id)
+
+            if not visible_points:
+                continue
+
+            
+            # To evaluate strongest local support, we can check how many of the 
+            # 3D points visible to this unregistered image are also observed by each 
+            # registered image. The registered image with the most shared points 
+            # can be considered the strongest local support for this unregistered image.
+            max_local_support = 0
+
+            if len(state.registered_images) > 2:
+                pair_count = {}
+                for point_id in visible_points:
+                    observers = list(point_observers.get(point_id, set()))
+                    # Generate all unique pairs of registered images that observe this point
+                    for obs1 in observers:
+                        for obs2 in observers:
+                            # to avoid duplicate pairs (obs1, obs2) and (obs2, obs1)
+                            if obs1 < obs2:  
+                                pair_count[(obs1, obs2)] = pair_count.get((obs1, obs2), 0) + 1
+                if pair_count:
+                    max_local_support = max(pair_count.values())
+
+        # If there are no pairs of registered images that observe the same 3D points visible 
+        # to this unregistered image,
+        if max_local_support == 0:
+            single_counts = {}
+            for pt_id in visible_points:
+                for obs in point_observers.get(pt_id, set()):
+                    single_counts[obs] = single_counts.get(obs, 0) + 1
+            if single_counts:
+                max_local_support = max(single_counts.values())
+
+        # Update the best candidate
+        if max_local_support > best_support:
+            best_support = max_local_support
             best_image = image_id
+            
+   
     
     return best_image
 
@@ -414,6 +494,14 @@ def triangulate_and_append_new_points(
     Finds unused 2D matches between the newly registered image and all previously 
     registered images, triangulates them into 3D, and updates the global state.
     """
+    # Steps:
+    # 1. Isolate unmapped matches between the newly registered image and each previously registered image.
+    # 2. Extract 2D coordinates of these matches and triangulate them into 3D points using the known camera poses.
+    # 3. Triangulate into 3D
+    # 4. Filter by reprojection error 
+    # 5. Append and update state.tracks and state.points3d with the newly triangulated points that pass the 
+    #    reprojection error threshold.
+
     R_new = state.camera_rotations[image_id]
     t_new = state.camera_translations[image_id]
     P_new = K @ np.hstack((R_new, t_new))
@@ -424,8 +512,86 @@ def triangulate_and_append_new_points(
             continue
 
         # Retrieve matches between the newly registered image and this registered image
-        pair = (reg_id, image_id) if (reg_id, image_id) in all_matches else (image_id, reg_id)
+
+        # safety net against missing pair in all_matches
+        if (reg_id, image_id) in all_matches:
+            pair = (reg_id, image_id)
+        else:
+            pair = (image_id, reg_id)
+
         matches = all_matches.get(pair)
+
+        if matches is None:
+            continue
+
+        R_reg = state.camera_rotations[reg_id]
+        t_reg = state.camera_translations[reg_id]
+        P_reg = K @ np.hstack((R_reg, t_reg))
+
+        # to isolate unmapped matches
+        unmapped_matches = []
+        unmapped_indices = [] # Stores tuple of (kp_reg, kp_new)
+
+        for match in matches:
+            if pair[0] == reg_id:
+                kp_reg = match.queryIdx
+                kp_new = match.trainIdx
+            else:
+                kp_reg = match.trainIdx
+                kp_new = match.queryIdx
+
+            # Check BOTH features to ensure we don't duplicate 3D geometry
+            # by triangulating the same 3D point multiple times from different pairs of registered images.
+            if (reg_id, kp_reg) in state.tracks or (image_id, kp_new) in state.tracks:
+                continue
+
+            unmapped_matches.append(match)
+            unmapped_indices.append((kp_reg, kp_new))
+
+        if not unmapped_matches:
+            continue
+
+        # extract 2D coordinates safely using the mapped indices
+        pts_reg = np.array([features[reg_id].keypoints[reg_idx].pt for reg_idx, _ in unmapped_indices])
+        pts_new = np.array([features[image_id].keypoints[new_idx].pt for _, new_idx in unmapped_indices])
+
+        # triangulate them into 3D points using the known camera poses using absolute projection matrices P = K[R|t]
+        points4d = cv2.triangulatePoints(P_reg, P_new, pts_reg.T, pts_new.T)
+        points3d = (points4d[:3] / points4d[3]).T
+
+        # to filter by reprojection error, we can compute the reprojection of these points into both views and check the error against the original 2D points.
+        errors_reg = compute_reprojection_errors(points3d, pts_reg, K, R_reg, t_reg)
+        errors_new = compute_reprojection_errors(points3d, pts_new, K, R_new, t_new)
+        keep_mask = (errors_reg < max_reprojection_error) & (errors_new < max_reprojection_error)
+
+        kept_points3d = points3d[keep_mask]
+        if len(kept_points3d) == 0:
+            continue
+
+        # extract colours and add to global state
+        kept_points_new = pts_new[keep_mask]
+        kept_colours = sample_point_colours(features[image_id].image, kept_points_new)
+
+        start_index = len(state.points3d)
+        state.points3d = np.vstack((state.points3d, kept_points3d))
+        state.point_colors = np.vstack((state.point_colors, kept_colours))
+
+        # Update state.tracks with the new points 
+        # so that these features are considered "registered" in future iterations and won't 
+        # be used for 2D-3D correspondences anymore.
+
+        for (kp_reg, kp_new), keep in zip(unmapped_indices, keep_mask):
+            if not keep:
+                continue
+                
+            point_id = start_index
+            state.tracks[(reg_id, kp_reg)] = point_id
+            state.tracks[(image_id, kp_new)] = point_id
+
+            start_index += 1
+            new_points_count += 1
+
+    return new_points_count
 
 
 
@@ -483,8 +649,14 @@ def register_next_image(
     state.registered_images.append(image_id)
     state.unregistered_images.remove(image_id)
 
-    # TODO: triangulate new points between image_id and registered views,
-    # update state.tracks and state.points3d accordingly.
+    triangulate_and_append_new_points(
+        features, 
+        state, 
+        image_id, 
+        all_matches, 
+        K, 
+        max_reprojection_error=4.0 # Or pass this down from args
+    )
     
     return True
 
@@ -527,6 +699,9 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         max_reprojection_error=args.max_reprojection_error,
     )
 
+    plotter = ReconstructionPlotter(window_name="Live GF4 Reconstruction")
+    plotter.update(state, K)
+
     while state.unregistered_images:
         next_image = choose_next_image(features, state, pairwise_matches)
         if next_image is None:
@@ -544,6 +719,13 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         )
         if not accepted:
             break
+        print(f"Registered image {next_image} ({len(state.registered_images)} total), {len(state.points3d)} points")
+        # to consider appending metrics to a CSV after each successful registration
+        plotter.update(state, K)
+
+    print("Reconstruction complete. Close the 3D viewer window to continue.")
+    plotter.vis.run() 
+    plotter.close()
 
     return state
 
@@ -564,6 +746,21 @@ def main() -> int:
     print(f"  remaining images: {len(state.unregistered_images)}")
     print(f"  reconstructed points: {len(state.points3d)}")
     print(f"  wrote: {args.output_dir}")
+
+
+    # camera_poses = []
+    # for img_id in state.registered_images:
+    #     camera_poses.append((
+    #         f"Image {img_id}", 
+    #         state.camera_rotations[img_id], 
+    #         state.camera_translations[img_id]
+    #     ))
+
+    # # Save outputs for your report
+    # write_ply(args.output_dir / "final_reconstruction.ply", state.points3d, state.point_colors)
+    # plot_multi_view_reconstruction(state.points3d, state.point_colors, camera_poses, args.output_dir / "camera_trajectory.png")
+
+
     return 0
 
         
