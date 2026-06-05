@@ -582,8 +582,14 @@ def register_next_image(
     state.registered_images.append(image_id)
     state.unregistered_images.remove(image_id)
 
-    # TODO: triangulate new points between image_id and registered views,
-    # update state.tracks and state.points3d accordingly.
+    triangulate_and_append_new_points(
+        features, 
+        state, 
+        image_id, 
+        all_matches, 
+        K, 
+        max_reprojection_error=4.0 # Or pass this down from args
+    )
     
     return True
 
