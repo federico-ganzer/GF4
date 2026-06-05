@@ -5,6 +5,7 @@ import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
 import sys
+import cv2
 
 import numpy as np
 
@@ -32,6 +33,7 @@ from week3.two_view_utils import (
 )
 
 DEFAULT_WEEK2_DIR = Path(__file__).resolve().parents[1] / "week2"
+DEFAULT_WEEK3_DIR = Path(__file__).resolve().parents[1] / "week3"
 
 
 @dataclass
@@ -54,9 +56,6 @@ class ReconstructionState:
     points3d: np.ndarray
     point_colors: np.ndarray
     
-    
-
-
 
 def load_week2_module(week2_dir: Path):
     module_path = Path(week2_dir) / "sfm_utils.py"
@@ -71,6 +70,18 @@ def load_week2_module(week2_dir: Path):
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def load_week3_module(week3_dir: Path):
+    """week 3 modules loaded"""
+    module_path = Path(week3_dir) / "two_view_utils.py"
+    if not module_path.exists():
+        raise FileNotFoundError(f"Could not find Week 3 two_view_utils.py: {module_path}")
+
+    spec = importlib.util.spec_from_file_location("week3_two_view_utils", module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not import Week 3 module from {module_path}")
+
 
 
 def parse_args() -> argparse.Namespace:
@@ -632,6 +643,9 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         max_reprojection_error=args.max_reprojection_error,
     )
 
+    plotter = ReconstructionPlotter(window_name="Live GF4 Reconstruction")
+    plotter.update(state, K)
+
     while state.unregistered_images:
         next_image = choose_next_image(features, state, pairwise_matches)
         if next_image is None:
@@ -649,6 +663,13 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         )
         if not accepted:
             break
+        print(f"Registered image {next_image} ({len(state.registered_images)} total), {len(state.points3d)} points")
+        # to consider appending metrics to a CSV after each successful registration
+        plotter.update(state, K)
+
+    print("Reconstruction complete. Close the 3D viewer window to continue.")
+    plotter.vis.run() 
+    plotter.close()
 
     return state
 
@@ -669,6 +690,21 @@ def main() -> int:
     print(f"  remaining images: {len(state.unregistered_images)}")
     print(f"  reconstructed points: {len(state.points3d)}")
     print(f"  wrote: {args.output_dir}")
+
+
+    # camera_poses = []
+    # for img_id in state.registered_images:
+    #     camera_poses.append((
+    #         f"Image {img_id}", 
+    #         state.camera_rotations[img_id], 
+    #         state.camera_translations[img_id]
+    #     ))
+
+    # # Save outputs for your report
+    # write_ply(args.output_dir / "final_reconstruction.ply", state.points3d, state.point_colors)
+    # plot_multi_view_reconstruction(state.points3d, state.point_colors, camera_poses, args.output_dir / "camera_trajectory.png")
+
+
     return 0
 
 import open3d as o3d
