@@ -328,23 +328,89 @@ def choose_next_image(
     state: ReconstructionState,
     all_matches: dict[tuple[int, int], list],
 ) -> int | None:
+    """
+    TODO: change to a triplet-based selection algorithm that selects the 
+    unregistered image with the most 2D matches to already registered images, 
+    where the 2D matches must be to keypoints that are part of existing 3D 
+    tracks in the model. This will ensure that the next image has enough overlap 
+    with the existing reconstruction to be successfully registered with PnP.
+    """
     best_image = None
     best_support = 0
-    for image_id in state.unregistered_images: # search all images in un-registered images
-        support = 0
-        for registered_id in state.registered_images:  
-            pair = (registered_id, image_id) if (registered_id, image_id) in all_matches else (image_id, registered_id)
-            matches = all_matches.get(pair) # find matches in this pair
+
+    # map each 3D point ID to the set of registered images that observe it
+    point_observers = {}
+    for (img_id, kp_idx), point_id in state.tracks.items():
+        if img_id in state.registered_images:
+            if point_id not in point_observers:
+                point_observers[point_id] = set()
+            point_observers[point_id].add(img_id)
+
+    for image_id in state.unregistered_images:
+        # To gather all unique 3D points that this unregistered image matches
+        # to across all registered images, we can use a set.
+        visible_points = set()
+        for registered_id in state.registered_images:
+            # safety net against missing pair in all_matches
+            if (registered_id, image_id) in all_matches:
+                pair = (registered_id, image_id)
+            else:
+                pair = (image_id, registered_id)
+
+            matches = all_matches.get(pair)
             if matches is None:
                 continue
-            support += sum(
-                1
-                for match in matches
-                if (registered_id, match.queryIdx if pair[0] == registered_id else match.trainIdx) in state.tracks
-            )
-        if support > best_support:
-            best_support = support
+            
+            for match in matches:
+                # Determine which side of the pair is the registered image
+                if pair[0] == registered_id:
+                    key = (registered_id, match.queryIdx)
+                else:
+                    key = (registered_id, match.trainIdx)
+
+                if key in state.tracks:
+                    point_id = state.tracks[key]
+                    visible_points.add(point_id)
+
+            if not visible_points:
+                continue
+
+            
+            # To evaluate strongest local support, we can check how many of the 
+            # 3D points visible to this unregistered image are also observed by each 
+            # registered image. The registered image with the most shared points 
+            # can be considered the strongest local support for this unregistered image.
+            max_local_support = 0
+
+            if len(state.registered_images) > 2:
+                pair_count = {}
+                for point_id in visible_points:
+                    observers = list(point_observers.get(point_id, set()))
+                    # Generate all unique pairs of registered images that observe this point
+                    for obs1 in observers:
+                        for obs2 in observers:
+                            # to avoid duplicate pairs (obs1, obs2) and (obs2, obs1)
+                            if obs1 < obs2:  
+                                pair_count[(obs1, obs2)] = pair_count.get((obs1, obs2), 0) + 1
+                if pair_count:
+                    max_local_support = max(pair_count.values())
+
+        # If there are no pairs of registered images that observe the same 3D points visible 
+        # to this unregistered image,
+        if max_local_support == 0:
+            single_counts = {}
+            for pt_id in visible_points:
+                for obs in point_observers.get(pt_id, set()):
+                    single_counts[obs] = single_counts.get(obs, 0) + 1
+            if single_counts:
+                max_local_support = max(single_counts.values())
+
+        # Update the best candidate
+        if max_local_support > best_support:
+            best_support = max_local_support
             best_image = image_id
+            
+   
     
     return best_image
 
@@ -375,6 +441,8 @@ def triangulate_and_append_new_points(
         matches = all_matches.get(pair)
         if matches is None:
             continue
+
+
 
 
 
