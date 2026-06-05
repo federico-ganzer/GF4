@@ -427,6 +427,14 @@ def triangulate_and_append_new_points(
     Finds unused 2D matches between the newly registered image and all previously 
     registered images, triangulates them into 3D, and updates the global state.
     """
+    # Steps:
+    # 1. Isolate unmapped matches between the newly registered image and each previously registered image.
+    # 2. Extract 2D coordinates of these matches and triangulate them into 3D points using the known camera poses.
+    # 3. Triangulate into 3D
+    # 4. Filter by reprojection error 
+    # 5. Append and update state.tracks and state.points3d with the newly triangulated points that pass the 
+    #    reprojection error threshold.
+
     R_new = state.camera_rotations[image_id]
     t_new = state.camera_translations[image_id]
     P_new = K @ np.hstack((R_new, t_new))
@@ -437,11 +445,42 @@ def triangulate_and_append_new_points(
             continue
 
         # Retrieve matches between the newly registered image and this registered image
-        pair = (reg_id, image_id) if (reg_id, image_id) in all_matches else (image_id, reg_id)
+
+        # safety net against missing pair in all_matches
+        if (reg_id, image_id) in all_matches:
+            pair = (reg_id, image_id)
+        else:
+            pair = (image_id, reg_id)
+
         matches = all_matches.get(pair)
+
         if matches is None:
             continue
 
+        R_reg = state.camera_rotations[reg_id]
+        t_reg = state.camera_translations[reg_id]
+        P_reg = K @ np.hstack((R_reg, t_reg))
+
+        # to isolate unmapped matches
+        unmapped_matches = []
+        for match in matches:
+            if pair[0] == reg_id:
+                kp_reg = match.queryIdx
+                kp_new = match.trainIdx
+                key = (reg_id, kp_reg)
+                if key in state.tracks:
+                    continue
+                unmapped_matches.append(match)
+            else:
+                kp_reg = match.trainIdx
+                kp_new = match.queryIdx
+                key = (reg_id, kp_new)
+                if key in state.tracks:
+                    continue
+                unmapped_matches.append(match)
+
+        if not unmapped_matches:
+            continue
 
 
 
