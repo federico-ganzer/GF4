@@ -482,6 +482,59 @@ def triangulate_and_append_new_points(
         if not unmapped_matches:
             continue
 
+        # extract 2D coordinates of these matches
+        pts_reg = np.array([features[reg_id].keypoints[match.queryIdx].pt for match in unmapped_matches])
+        pts_new = np.array([features[image_id].keypoints[match.trainIdx].pt for match in unmapped_matches])
+
+        # triangulate them into 3D points using the known camera poses using absolute projection matrices P = K[R|t]
+        points4d = cv2.triangulatePoints(P_reg, P_new, pts_reg.T, pts_new.T)
+        points3d = (points4d[:3] / points4d[3]).T
+
+        # to filter by reprojection error, we can compute the reprojection of these points into both views and check the error against the original 2D points.
+        errors_reg = compute_reprojection_errors(points3d, pts_reg, K, R_reg, t_reg)
+        errors_new = compute_reprojection_errors(points3d, pts_new, K, R_new, t_new)
+        keep_mask = (errors_reg < max_reprojection_error) & (errors_new < max_reprojection_error)
+
+        kept_points3d = points3d[keep_mask]
+        if len(kept_points3d) == 0:
+            continue
+
+        # extract colours and add to global state
+        kept_points_new = pts_new[keep_mask]
+        kept_colours = sample_point_colours(features[image_id].image, kept_points_new)
+
+        start_index = len(state.points3d)
+        state.points3d = np.vstack((state.points3d, kept_points3d))
+        state.point_colors = np.vstack((state.point_colors, kept_colours))
+
+        # Update state.tracks with the new points 
+        # so that these features are considered "registered" in future iterations and won't 
+        # be used for 2D-3D correspondences anymore.
+
+        for match, keep in zip(unmapped_matches, keep_mask):
+            if not keep:
+                continue
+            if pair[0] == reg_id:
+                kp_reg = match.queryIdx
+                kp_new = match.trainIdx
+                point_id = start_index
+                state.tracks[(reg_id, kp_reg)] = point_id
+                state.tracks[(image_id, kp_new)] = point_id
+            else:
+                kp_reg = match.trainIdx
+                kp_new = match.queryIdx
+                point_id = start_index
+                state.tracks[(reg_id, kp_reg)] = point_id
+                state.tracks[(image_id, kp_new)] = point_id
+
+            start_index += 1
+            new_points_count += 1
+
+    return new_points_count
+
+
+
+
 
 
 
