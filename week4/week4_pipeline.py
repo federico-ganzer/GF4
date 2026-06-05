@@ -9,7 +9,9 @@ import cv2
 
 import numpy as np
 
-from week3.two_view_utils import (
+import time
+
+'''from week3.two_view_utils import (
     ThirdViewResult,
     TwoViewResult,
     build_2d3d_correspondences,
@@ -30,7 +32,7 @@ from week3.two_view_utils import (
     save_csv,
     triangulate_points,
     write_ply,
-)
+)'''
 
 DEFAULT_WEEK2_DIR = Path(__file__).resolve().parents[1] / "week2"
 DEFAULT_WEEK3_DIR = Path(__file__).resolve().parents[1] / "week3"
@@ -129,7 +131,7 @@ def load_week2_module(week2_dir: Path):
 
 
 def load_week3_module(week3_dir: Path):
-    """week 3 modules loaded"""
+    """Load the completed Week 3 two_view_utils.py by path."""
     module_path = Path(week3_dir) / "two_view_utils.py"
     if not module_path.exists():
         raise FileNotFoundError(f"Could not find Week 3 two_view_utils.py: {module_path}")
@@ -138,18 +140,27 @@ def load_week3_module(week3_dir: Path):
     if spec is None or spec.loader is None:
         raise ImportError(f"Could not import Week 3 module from {module_path}")
 
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="GF4 Week 4 incremental sparse reconstruction pipeline."
     )
-    parser.add_argument(
+    image_group = parser.add_mutually_exclusive_group(required=True)
+    image_group.add_argument(
         "--images",
         nargs="+",
         type=Path,
-        required=True,
         help="Paths to all images in the sequence.",
+    )
+    image_group.add_argument(
+        "--image-dir",
+        type=Path,
+        help="Directory containing all input images.",
     )
     parser.add_argument(
         "--output-dir",
@@ -162,6 +173,12 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=DEFAULT_WEEK2_DIR,
         help="Directory containing the completed Week 2 sfm_utils.py.",
+    )
+    parser.add_argument(
+        "--week3-dir",
+        type=Path,
+        default=DEFAULT_WEEK3_DIR,
+        help="Directory containing the completed Week 3 two_view_utils.py.",
     )
     parser.add_argument(
         "--max-image-size",
@@ -245,6 +262,8 @@ def parse_args() -> argparse.Namespace:
         parser.error("--pnp-ransac-threshold must be positive")
     if args.min_pnp_inliers < 6:
         parser.error("--min-pnp-inliers must be at least 6")
+    if args.image_dir is not None and not args.image_dir.is_dir():
+        parser.error("--image-dir must be an existing directory")
 
     return args
 
@@ -257,8 +276,23 @@ def _mean(values: np.ndarray) -> float | None:
     return float(np.mean(values)) if len(values) else None
 
 
+def expand_image_dir(image_dir: Path) -> list[Path]:
+    supported_ext = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
+    images = sorted(
+        [
+            path
+            for path in image_dir.iterdir()
+            if path.suffix.lower() in supported_ext and path.is_file()
+        ]
+    )
+    if not images:
+        raise ValueError(f"No supported image files found in directory: {image_dir}")
+    return images
+
+
 def compute_pairwise_match_graph(
     week2,
+    week3,
     features: list,
     K: np.ndarray,
     ratio: float,
@@ -282,7 +316,7 @@ def compute_pairwise_match_graph(
                 features[j].keypoints,
                 matches,
             )
-            E, inlier_mask = estimate_essential_matrix(
+            E, inlier_mask = week3.estimate_essential_matrix(
                 pts_i,
                 pts_j,
                 K,
@@ -311,6 +345,7 @@ def choose_initial_pair(edges: list[PairwiseEdge]) -> PairwiseEdge:
 
 def register_initial_pair(
     week2,
+    week3,
     features,
     edge: PairwiseEdge,
     K: np.ndarray,
@@ -322,7 +357,7 @@ def register_initial_pair(
         features[j].keypoints,
         edge.matches,
     )
-    R, t, pose_mask = recover_relative_pose(
+    R, t, pose_mask = week3.recover_relative_pose(
         edge.essential_matrix,
         pts_i,
         pts_j,
@@ -334,10 +369,10 @@ def register_initial_pair(
     pts_j_pose = pts_j[pose_mask]
     pose_matches = [match for match, keep in zip(edge.matches, pose_mask) if keep]
 
-    points3d = triangulate_points(pts_i_pose, pts_j_pose, K, R, t)
-    errors_i = compute_reprojection_errors(points3d, pts_i_pose, K, np.eye(3), np.zeros((3, 1)))
-    errors_j = compute_reprojection_errors(points3d, pts_j_pose, K, R, t)
-    keep_mask = filter_reconstructed_points(
+    points3d = week3.triangulate_points(pts_i_pose, pts_j_pose, K, R, t)
+    errors_i = week3.compute_reprojection_errors(points3d, pts_i_pose, K, np.eye(3), np.zeros((3, 1)))
+    errors_j = week3.compute_reprojection_errors(points3d, pts_j_pose, K, R, t)
+    keep_mask = week3.filter_reconstructed_points(
         points3d,
         errors_i,
         errors_j,
@@ -347,7 +382,7 @@ def register_initial_pair(
     )
 
     kept_points = points3d[keep_mask]
-    kept_colors = sample_point_colours(features[i].image, pts_i_pose[keep_mask])
+    kept_colors = week3.sample_point_colours(features[i].image, pts_i_pose[keep_mask])
 
     tracks: dict[tuple[int, int], int] = {}
     next_point_id = 0
@@ -373,18 +408,22 @@ def build_2d3d_correspondences_to_model(
     features,
     state: ReconstructionState,
     matches: list,
-    image_i: int,
-    image_j: int,
+    registered_image: int,
+    new_image: int,
 ) -> tuple[np.ndarray, np.ndarray]:
     points3d = []
     pts2d = []
     for match in matches:
-        key = (image_i, match.queryIdx)
-        if key not in state.tracks:
-            continue
-        point_id = state.tracks[key]
-        points3d.append(state.points3d[point_id])
-        pts2d.append(features[image_j].keypoints[match.trainIdx].pt)
+        # match.queryIdx is from the first image in the pair,
+        # match.trainIdx is from the second image.
+        if (registered_image, match.queryIdx) in state.tracks:
+            point_id = state.tracks[(registered_image, match.queryIdx)]
+            points3d.append(state.points3d[point_id])
+            pts2d.append(features[new_image].keypoints[match.trainIdx].pt)
+        elif (registered_image, match.trainIdx) in state.tracks:
+            point_id = state.tracks[(registered_image, match.trainIdx)]
+            points3d.append(state.points3d[point_id])
+            pts2d.append(features[new_image].keypoints[match.queryIdx].pt)
 
     if not points3d:
         return np.empty((0, 3), dtype=np.float64), np.empty((0, 2), dtype=np.float64)
@@ -483,6 +522,8 @@ def choose_next_image(
 
 
 def triangulate_and_append_new_points(
+    week2,
+    week3,
     features, 
     state: ReconstructionState,
     image_id: int,
@@ -560,8 +601,8 @@ def triangulate_and_append_new_points(
         points3d = (points4d[:3] / points4d[3]).T
 
         # to filter by reprojection error, we can compute the reprojection of these points into both views and check the error against the original 2D points.
-        errors_reg = compute_reprojection_errors(points3d, pts_reg, K, R_reg, t_reg)
-        errors_new = compute_reprojection_errors(points3d, pts_new, K, R_new, t_new)
+        errors_reg = week3.compute_reprojection_errors(points3d, pts_reg, K, R_reg, t_reg)
+        errors_new = week3.compute_reprojection_errors(points3d, pts_new, K, R_new, t_new)
         keep_mask = (errors_reg < max_reprojection_error) & (errors_new < max_reprojection_error)
 
         kept_points3d = points3d[keep_mask]
@@ -570,7 +611,7 @@ def triangulate_and_append_new_points(
 
         # extract colours and add to global state
         kept_points_new = pts_new[keep_mask]
-        kept_colours = sample_point_colours(features[image_id].image, kept_points_new)
+        kept_colours = week3.sample_point_colours(features[image_id].image, kept_points_new)
 
         start_index = len(state.points3d)
         state.points3d = np.vstack((state.points3d, kept_points3d))
@@ -594,10 +635,9 @@ def triangulate_and_append_new_points(
     return new_points_count
 
 
-
-
 def register_next_image(
     week2,
+    week3,
     features,
     state: ReconstructionState,
     image_id: int,
@@ -614,12 +654,13 @@ def register_next_image(
         matches = all_matches.get(pair)
         if matches is None:
             continue
-        if pair[0] == reg_id:
-            pts3d, pts2d = build_2d3d_correspondences_to_model(features, state, matches, reg_id, image_id)
-        else:
-            pts3d, pts2d = build_2d3d_correspondences_to_model(features, state, matches, image_id, reg_id)
-            # swap because build_2d3d_correspondences_to_model assumes queryIdx is registered image
-            pts3d, pts2d = pts3d, pts2d
+        pts3d, pts2d = build_2d3d_correspondences_to_model(
+            features,
+            state,
+            matches,
+            registered_image=reg_id,
+            new_image=image_id,
+        )
         if len(pts3d):
             correspondences3d.append(pts3d)
             correspondences2d.append(pts2d)
@@ -632,7 +673,7 @@ def register_next_image(
     if len(points3d) < 6:
         return False
 
-    R_new, t_new, pnp_mask = estimate_camera_pose_pnp(
+    R_new, t_new, pnp_mask = week3.estimate_camera_pose_pnp(
         points3d,
         pts2d,
         K,
@@ -650,6 +691,8 @@ def register_next_image(
     state.unregistered_images.remove(image_id)
 
     triangulate_and_append_new_points(
+        week2,
+        week3,
         features, 
         state, 
         image_id, 
@@ -662,16 +705,23 @@ def register_next_image(
 
 
 def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
-    output_dir = ensure_dir(args.output_dir)
     week2 = load_week2_module(args.week2_dir)
+    week3 = load_week3_module(args.week3_dir)
+    output_dir = week2.ensure_dir(args.output_dir)
+
+    images = args.images
+    if args.image_dir is not None:
+        images = expand_image_dir(args.image_dir)
+    elif images is not None and len(images) == 1 and images[0].is_dir():
+        images = expand_image_dir(images[0])
 
     features = week2.precompute_image_features(
-        args.images,
+        images,
         max_features=args.max_features,
         max_image_size=args.max_image_size,
     )
 
-    K = make_camera_matrix(
+    K = week3.make_camera_matrix(
         features[0].image.shape,
         focal_length_px=args.focal_length_px,
         principal_point=None if args.principal_point is None else tuple(args.principal_point),
@@ -679,6 +729,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
 
     edges = compute_pairwise_match_graph(
         week2,
+        week3,
         features,
         K,
         args.ratio,
@@ -693,6 +744,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
     initial_edge = choose_initial_pair(edges)
     state = register_initial_pair(
         week2,
+        week3,
         features,
         initial_edge,
         K,
@@ -703,11 +755,14 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
     plotter.update(state, K)
 
     while state.unregistered_images:
-        next_image = choose_next_image(features, state, pairwise_matches)
+        #next_image = choose_next_image(features, state, pairwise_matches)
+        next_image = choose_next_image(state, pairwise_matches)
         if next_image is None:
+            print('Next image not found.')
             break
         accepted = register_next_image(
             week2,
+            week3,
             features,
             state,
             next_image,
@@ -722,7 +777,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         print(f"Registered image {next_image} ({len(state.registered_images)} total), {len(state.points3d)} points")
         # to consider appending metrics to a CSV after each successful registration
         plotter.update(state, K)
-
+        time.sleep(1)
     print("Reconstruction complete. Close the 3D viewer window to continue.")
     plotter.vis.run() 
     plotter.close()
