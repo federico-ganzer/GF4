@@ -55,8 +55,61 @@ class ReconstructionState:
     point_colors: np.ndarray
     
     
+import open3d as o3d
 
+class ReconstructionPlotter:
+    def __init__(self, window_name= "Live Reconstruction"):
+        self.vis = o3d.visualization.Visualizer()
+        self.vis.create_window(window_name)
+        self.point_cloud = None
+        self.cameras = []
+        self.added = False
+        
+    def update(self, state: ReconstructionState, K: np.ndarray):
+        if self.added:
+            self.vis.clear_geometries() # clear existing reconstruction to update
+            
+        self.point_cloud = o3d.geometry.PointCloud()
+        self.point_cloud.points = o3d.utility.Vector3dVector(state.points3d)
+        self.point_cloud.colors = o3d.utility.Vector3dVector(state.point_colors.astype(np.float64)/255)
+        self.vis.add_geometry(self.point_cloud)
 
+        for img_id in state.registered_images:
+            R = state.camera_rotations[img_id]
+            t = state.camera_translations[img_id]
+            frustum = self._build_camera_frustum(R, t, scale=0.1)
+            self.vis.add_geometry(frustum)
+        
+        self.vis.poll_events()
+        self.vis.update_renderer()
+        self.added = True # marks existing reconstruction
+    
+    def _build_camera_frustum(self, R: np.ndarray, t: np.ndarray, scale: float):
+        R_cw = R.T # convert to camera2world view
+        center = -R_cw @ t.reshape(3,1)
+        
+        # Simple pyramid corners in camera space
+        corners = scale * np.array([
+            [-1, -0.75, 2], [1, -0.75, 2],
+            [1, 0.75, 2], [-1, 0.75, 2],
+        ], dtype=np.float64)
+        
+        corners_world = (R_cw @ corners.T).T + center.ravel()
+        
+        lines = [[0, 1], [1, 2], [2, 3], [3, 0],
+                 [0, 4], [1, 4], [2, 4], [3, 4]]
+        colors = [[1, 0, 0] for _ in lines]
+        
+        line_set = o3d.geometry.LineSet()
+        line_set.points = o3d.utility.Vector3dVector(
+            np.vstack([corners_world, center.ravel()])
+        )
+        line_set.lines = o3d.utility.Vector2iVector(lines)
+        line_set.colors = o3d.utility.Vector3dVector(colors)
+        return line_set
+    
+    def close(self):
+        self.vis.destroy_window()
 
 def load_week2_module(week2_dir: Path):
     module_path = Path(week2_dir) / "sfm_utils.py"
@@ -513,61 +566,6 @@ def main() -> int:
     print(f"  wrote: {args.output_dir}")
     return 0
 
-import open3d as o3d
-
-class ReconstructionPlotter:
-    def __init__(self, window_name= "Live Reconstruction"):
-        self.vis = o3d.visualization.Visualizer()
-        self.vis.create_window(window_name)
-        self.point_cloud = None
-        self.cameras = []
-        self.added = False
-        
-    def update(self, state: ReconstructionState, K: np.ndarray):
-        if self.added:
-            self.vis.clear_geometries() # clear existing reconstruction to update
-            
-        self.point_cloud = o3d.geometry.PointCloud()
-        self.point_cloud.points = o3d.utility.Vector3dVector(state.points3d)
-        self.point_cloud.colors = o3d.utility.Vector3dVector(state.point_colors.astype(np.float64)/255)
-        self.vis.add_geometry(self.point_cloud)
-
-        for img_id in state.registered_images:
-            R = state.camera_rotations[img_id]
-            t = state.camera_translations[img_id]
-            frustum = self._build_camera_frustum(R, t, scale=0.1)
-            self.vis.add_geometry(frustum)
-        
-        self.vis.poll_events()
-        self.vis.update_renderer()
-        self.added = True # marks existing reconstruction
-    
-    def _build_camera_frustum(self, R: np.ndarray, t: np.ndarray, scale: float):
-        R_cw = R.T # convert to camera2world view
-        center = -R_cw @ t.reshape(3,1)
-        
-        # Simple pyramid corners in camera space
-        corners = scale * np.array([
-            [-1, -0.75, 2], [1, -0.75, 2],
-            [1, 0.75, 2], [-1, 0.75, 2],
-        ], dtype=np.float64)
-        
-        corners_world = (R_cw @ corners.T).T + center.ravel()
-        
-        lines = [[0, 1], [1, 2], [2, 3], [3, 0],
-                 [0, 4], [1, 4], [2, 4], [3, 4]]
-        colors = [[1, 0, 0] for _ in lines]
-        
-        line_set = o3d.geometry.LineSet()
-        line_set.points = o3d.utility.Vector3dVector(
-            np.vstack([corners_world, center.ravel()])
-        )
-        line_set.lines = o3d.utility.Vector2iVector(lines)
-        line_set.colors = o3d.utility.Vector3dVector(colors)
-        return line_set
-    
-    def close(self):
-        self.vis.destroy_window()
         
 
 if __name__ == "__main__":
