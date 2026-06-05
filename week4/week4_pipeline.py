@@ -463,28 +463,30 @@ def triangulate_and_append_new_points(
 
         # to isolate unmapped matches
         unmapped_matches = []
+        unmapped_indices = [] # Stores tuple of (kp_reg, kp_new)
+
         for match in matches:
             if pair[0] == reg_id:
                 kp_reg = match.queryIdx
                 kp_new = match.trainIdx
-                key = (reg_id, kp_reg)
-                if key in state.tracks:
-                    continue
-                unmapped_matches.append(match)
             else:
                 kp_reg = match.trainIdx
                 kp_new = match.queryIdx
-                key = (reg_id, kp_new)
-                if key in state.tracks:
-                    continue
-                unmapped_matches.append(match)
+
+            # Check BOTH features to ensure we don't duplicate 3D geometry
+            # by triangulating the same 3D point multiple times from different pairs of registered images.
+            if (reg_id, kp_reg) in state.tracks or (image_id, kp_new) in state.tracks:
+                continue
+
+            unmapped_matches.append(match)
+            unmapped_indices.append((kp_reg, kp_new))
 
         if not unmapped_matches:
             continue
 
-        # extract 2D coordinates of these matches
-        pts_reg = np.array([features[reg_id].keypoints[match.queryIdx].pt for match in unmapped_matches])
-        pts_new = np.array([features[image_id].keypoints[match.trainIdx].pt for match in unmapped_matches])
+        # extract 2D coordinates safely using the mapped indices
+        pts_reg = np.array([features[reg_id].keypoints[reg_idx].pt for reg_idx, _ in unmapped_indices])
+        pts_new = np.array([features[image_id].keypoints[new_idx].pt for _, new_idx in unmapped_indices])
 
         # triangulate them into 3D points using the known camera poses using absolute projection matrices P = K[R|t]
         points4d = cv2.triangulatePoints(P_reg, P_new, pts_reg.T, pts_new.T)
@@ -511,30 +513,18 @@ def triangulate_and_append_new_points(
         # so that these features are considered "registered" in future iterations and won't 
         # be used for 2D-3D correspondences anymore.
 
-        for match, keep in zip(unmapped_matches, keep_mask):
+        for (kp_reg, kp_new), keep in zip(unmapped_indices, keep_mask):
             if not keep:
                 continue
-            if pair[0] == reg_id:
-                kp_reg = match.queryIdx
-                kp_new = match.trainIdx
-                point_id = start_index
-                state.tracks[(reg_id, kp_reg)] = point_id
-                state.tracks[(image_id, kp_new)] = point_id
-            else:
-                kp_reg = match.trainIdx
-                kp_new = match.queryIdx
-                point_id = start_index
-                state.tracks[(reg_id, kp_reg)] = point_id
-                state.tracks[(image_id, kp_new)] = point_id
+                
+            point_id = start_index
+            state.tracks[(reg_id, kp_reg)] = point_id
+            state.tracks[(image_id, kp_new)] = point_id
 
             start_index += 1
             new_points_count += 1
 
     return new_points_count
-
-
-
-
 
 
 
