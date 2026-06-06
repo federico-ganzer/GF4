@@ -612,6 +612,27 @@ def choose_next_image(
     
     return best_image
 
+
+def bundle_adjustment(
+    state: ReconstructionState,
+    features: list,
+    K: np.array
+) -> None:
+    """
+    Perform Sparse Global Bundle Adjustment
+    """
+    camera_ids = state.registered_images
+    camera_to_idx = {cam_id: i for i, cam_id in enumerate(camera_ids)}
+
+    n_cameras = len(camera_ids)
+    n_points = len(state.points3d)
+
+    camera_indeces = []
+    point_indices = []
+    points_2d = []
+
+
+
 def triangulate_and_append_new_points(
     week2,
     week3,
@@ -916,6 +937,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         print(f"Registered image {next_image} ({len(state.registered_images)} total), {len(state.points3d)} points")
         # to consider appending metrics to a CSV after each successful registration
         plotter.update(state, K)
+        bundle_adjustment(state, features, K)
         # time.sleep(2)
         t_end = time.time() + 2
         while time.time() < t_end:
