@@ -82,7 +82,7 @@ class ReconstructionPlotter:
         for img_id in state.registered_images:
             R = state.camera_rotations[img_id]
             t = state.camera_translations[img_id]
-            frustum = self._build_camera_frustum(R, t, scale=0.1)
+            frustum = self._build_camera_frustum(R, t, scale=1)
             self.vis.add_geometry(frustum)
         
         self.vis.poll_events()
@@ -809,7 +809,7 @@ def register_next_image(
     inlier_x = pts2d[pnp_mask.ravel().astype(bool)]
     errs = week3.compute_reprojection_errors(inlier_X, inlier_x, K, R_new, t_new)
 
-    if np.median(errs) > 5.0 or np.mean(errs) > 10.0:
+    if np.median(errs) > 3.0 or np.mean(errs) > 5.0:
         return False
 
     state.camera_rotations[image_id] = R_new
