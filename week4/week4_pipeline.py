@@ -12,6 +12,11 @@ import numpy as np
 import time
 import matplotlib.pyplot as plt
 
+import os
+os.environ["XDG_SESSION_TYPE"] = "x11"
+
+
+
 '''from week3.two_view_utils import (
     ThirdViewResult,
     TwoViewResult,
@@ -693,9 +698,9 @@ def triangulate_and_append_new_points(
         reproj_mask = (errors_reg < max_reprojection_error) & (errors_new < max_reprojection_error)
         
         finite_mask = np.isfinite(points3d).all(axis=1)
-        z1, z2 = week3.compute_depths(points3d, R_reg, t_reg)
-        z3, z4 = week3.compute_depths(points3d, R_new, t_new)
-        depth_mask = (z1 > 0) & (z2 > 0) & (z3 > 0) & (z4 > 0) 
+        _, z_reg = week3.compute_depths(points3d, R_reg, t_reg)
+        _, z_new = week3.compute_depths(points3d, R_new, t_new)
+        depth_mask = (z_reg > 0) & (z_new > 0)
         
         keep_mask = reproj_mask & finite_mask & depth_mask
         
@@ -883,7 +888,11 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
 
     plotter = ReconstructionPlotter(window_name="Live GF4 Reconstruction")
     plotter.update(state, K)
-    time.sleep(2)
+    # time.sleep(2)
+    t_end = time.time() + 2.0
+    while time.time() < t_end:
+        plotter.vis.poll_events()
+        plotter.vis.update_renderer()
     while state.unregistered_images:
         #next_image = choose_next_image(features, state, pairwise_matches)
         next_image = choose_next_image(state, pairwise_matches)
@@ -907,7 +916,12 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         print(f"Registered image {next_image} ({len(state.registered_images)} total), {len(state.points3d)} points")
         # to consider appending metrics to a CSV after each successful registration
         plotter.update(state, K)
-        time.sleep(2)
+        # time.sleep(2)
+        t_end = time.time() + 2
+        while time.time() < t_end:
+            plotter.vis.poll_events()
+            plotter.vis.update_renderer()
+
     print("Reconstruction complete. Close the 3D viewer window to continue.")
     plotter.vis.run() 
     o3d.io.write_point_cloud(output_dir/"reconstruction.ply", plotter.point_cloud)
