@@ -753,7 +753,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
 
     plotter = ReconstructionPlotter(window_name="Live GF4 Reconstruction")
     plotter.update(state, K)
-
+    time.sleep(1)
     while state.unregistered_images:
         #next_image = choose_next_image(features, state, pairwise_matches)
         next_image = choose_next_image(state, pairwise_matches)
@@ -780,6 +780,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         time.sleep(1)
     print("Reconstruction complete. Close the 3D viewer window to continue.")
     plotter.vis.run() 
+    o3d.io.write_point_cloud(output_dir/"reconstruction.ply", plotter.point_cloud)
     plotter.close()
 
     return state
