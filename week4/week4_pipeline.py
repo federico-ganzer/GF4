@@ -620,6 +620,8 @@ def bundle_adjustment(
 ) -> None:
     """
     Perform Sparse Global Bundle Adjustment
+
+    TODO: Implement this function.
     """
     camera_ids = state.registered_images
     camera_to_idx = {cam_id: i for i, cam_id in enumerate(camera_ids)}
@@ -630,6 +632,8 @@ def bundle_adjustment(
     camera_indeces = []
     point_indices = []
     points_2d = []
+
+    pass
 
 
 
@@ -658,6 +662,8 @@ def triangulate_and_append_new_points(
     R_new = state.camera_rotations[image_id]
     t_new = state.camera_translations[image_id]
     P_new = K @ np.hstack((R_new, t_new))
+
+    C_new = (-R_new.T @ t_new).ravel()
     
     new_points_count = 0
     for reg_id in state.registered_images:
@@ -680,6 +686,10 @@ def triangulate_and_append_new_points(
         R_reg = state.camera_rotations[reg_id]
         t_reg = state.camera_translations[reg_id]
         P_reg = K @ np.hstack((R_reg, t_reg))
+
+        # optical center of registered camera
+        C_reg = (-R_reg.T @ t_reg).ravel()
+
 
         # to isolate unmapped matches
         unmapped_matches = []
@@ -722,8 +732,22 @@ def triangulate_and_append_new_points(
         _, z_reg = week3.compute_depths(points3d, R_reg, t_reg)
         _, z_new = week3.compute_depths(points3d, R_new, t_new)
         depth_mask = (z_reg > 0) & (z_new > 0)
+
+        # triangulation angle check
+        v_reg = points3d - C_reg
+        v_new = points3d - C_new
+
+        dot_prod = np.sum(v_reg * v_new, axis=1)
+        norm_reg = np.linalg.norm(v_reg, axis=1)
+        norm_new = np.linalg.norm(v_new, axis=1)
+
+        cos_theta = dot_prod / (norm_reg * norm_new)
+        cos_theta = np.clip(cos_theta, -1.0, 1.0)
+        theta = np.rad2deg(np.arccos(cos_theta))
+
+        angle_mask = theta > 2.0
         
-        keep_mask = reproj_mask & finite_mask & depth_mask
+        keep_mask = reproj_mask & finite_mask & depth_mask & angle_mask
         
         kept_points3d = points3d[keep_mask]
         if len(kept_points3d) == 0:
