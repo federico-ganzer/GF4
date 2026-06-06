@@ -435,11 +435,11 @@ def choose_next_image(
     all_matches: dict[tuple[int, int], list],
 ) -> int | None:
     """
-    TODO: change to a triplet-based selection algorithm that selects the 
-    unregistered image with the most 2D matches to already registered images, 
-    where the 2D matches must be to keypoints that are part of existing 3D 
-    tracks in the model. This will ensure that the next image has enough overlap 
-    with the existing reconstruction to be successfully registered with PnP.
+    triplet-based selection algorithm that selects the unregistered image with the 
+    most 2D matches to already registered images, where the 2D matches must be to 
+    keypoints that are part of existing 3D tracks in the model. This will ensure 
+    that the next image has enough overlap with the existing reconstruction to be 
+    successfully registered with PnP.
     """
     best_image = None
     best_support = 0
