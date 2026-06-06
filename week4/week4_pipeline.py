@@ -10,6 +10,7 @@ import cv2
 import numpy as np
 
 import time
+import matplotlib.pyplot as plt
 
 '''from week3.two_view_utils import (
     ThirdViewResult,
@@ -242,6 +243,17 @@ def parse_args() -> argparse.Namespace:
         default=20,
         help="Minimum number of PnP inliers required to accept a new image.",
     )
+    parser.add_argument(
+        "--draw-graph",
+        action="store_true",
+        help="Draw and save the pairwise match graph after matching.",
+    )
+    parser.add_argument(
+        "--graph-output",
+        type=Path,
+        default=None,
+        help="Path to save the pairwise match graph image.",
+    )
 
     args = parser.parse_args()
     if args.max_image_size == 0:
@@ -337,6 +349,68 @@ def compute_pairwise_match_graph(
     return edges
 
 
+def draw_pairwise_match_graph(week2, edges: list[PairwiseEdge], output_path: Path | None = None) -> None:
+    """Draw a simple circular view-graph where nodes are images and edges are
+    weighted by RANSAC inlier counts.
+
+    - `edges` is a list of `PairwiseEdge` objects.
+    - If `output_path` is provided the figure is saved, otherwise shown.
+    """
+    if not edges:
+        return
+
+    # gather nodes
+    nodes = set()
+    for e in edges:
+        nodes.add(e.image_i)
+        nodes.add(e.image_j)
+    nodes = sorted(nodes)
+    n = len(nodes)
+    idx = {node: i for i, node in enumerate(nodes)}
+
+    # positions on a circle
+    angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    pos = {node: (np.cos(a), np.sin(a)) for node, a in zip(nodes, angles)}
+
+    # edge weights
+    weights = [e.inlier_count for e in edges]
+    max_w = max(weights) if weights else 1
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    ax.set_aspect('equal')
+    ax.axis('off')
+
+    # draw nodes
+    xs = [pos[node][0] for node in nodes]
+    ys = [pos[node][1] for node in nodes]
+    ax.scatter(xs, ys, s=300, c='tab:blue')
+
+    # labels
+    for node in nodes:
+        x, y = pos[node]
+        ax.text(x * 1.12, y * 1.12, str(node), ha='center', va='center')
+
+    # draw edges
+    for e in edges:
+        i = e.image_i
+        j = e.image_j
+        x1, y1 = pos[i]
+        x2, y2 = pos[j]
+        w = e.inlier_count
+        lw = 0.5 + 4.0 * (w / max_w)
+        ax.plot([x1, x2], [y1, y2], c='gray', linewidth=lw, alpha=0.8)
+        # annotate weight near midpoint
+        mx, my = 0.5 * (x1 + x2), 0.5 * (y1 + y2)
+        ax.text(mx, my, str(w), color='k', fontsize=8, ha='center', va='center')
+
+    if output_path is not None:
+        week2.ensure_dir(output_path.parent)
+        plt.savefig(output_path, dpi=200, bbox_inches='tight')
+        plt.close(fig)
+    else:
+        plt.show()
+
+
 def choose_initial_pair(edges: list[PairwiseEdge]) -> PairwiseEdge:
     if not edges:
         raise ValueError("No valid pairwise edges found for an initial reconstruction.")
@@ -410,24 +484,37 @@ def build_2d3d_correspondences_to_model(
     matches: list,
     registered_image: int,
     new_image: int,
-) -> tuple[np.ndarray, np.ndarray]:
+    pair: tuple[int, int]
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     points3d = []
     pts2d = []
+    point_ids = []
+    new_kp_ids = []
     for match in matches:
         # match.queryIdx is from the first image in the pair,
         # match.trainIdx is from the second image.
-        if (registered_image, match.queryIdx) in state.tracks:
-            point_id = state.tracks[(registered_image, match.queryIdx)]
-            points3d.append(state.points3d[point_id])
-            pts2d.append(features[new_image].keypoints[match.trainIdx].pt)
-        elif (registered_image, match.trainIdx) in state.tracks:
-            point_id = state.tracks[(registered_image, match.trainIdx)]
-            points3d.append(state.points3d[point_id])
-            pts2d.append(features[new_image].keypoints[match.queryIdx].pt)
+        if pair[0] == registered_image:
+            kp_reg = match.queryIdx
+            kp_new = match.trainIdx
+        else:
+            kp_reg = match.trainIdx
+            kp_new = match.queryIdx
+        
+        track_key = (registered_image, kp_reg)
+        if track_key not in state.tracks:
+            continue
+        
+        point_id = state.tracks[track_key]
+        points3d.append(state.points3d[point_id])
+        pts2d.append(features[new_image].keypoints[kp_new].pt)
+        point_ids.append(point_id)
+        new_kp_ids.append(kp_new)
 
     if not points3d:
         return np.empty((0, 3), dtype=np.float64), np.empty((0, 2), dtype=np.float64)
-    return np.asarray(points3d, dtype=np.float64), np.asarray(pts2d, dtype=np.float64)
+    return (np.asarray(points3d, dtype=np.float64), np.asarray(pts2d, dtype=np.float64), 
+            np.asarray(point_ids, dtype=np.float64), np.asarray(new_kp_ids, dtype=np.float64)
+            )
 
 
 def choose_next_image(
@@ -520,7 +607,6 @@ def choose_next_image(
     
     return best_image
 
-
 def triangulate_and_append_new_points(
     week2,
     week3,
@@ -546,7 +632,7 @@ def triangulate_and_append_new_points(
     R_new = state.camera_rotations[image_id]
     t_new = state.camera_translations[image_id]
     P_new = K @ np.hstack((R_new, t_new))
-
+    
     new_points_count = 0
     for reg_id in state.registered_images:
         if reg_id == image_id:
@@ -599,12 +685,20 @@ def triangulate_and_append_new_points(
         # triangulate them into 3D points using the known camera poses using absolute projection matrices P = K[R|t]
         points4d = cv2.triangulatePoints(P_reg, P_new, pts_reg.T, pts_new.T)
         points3d = (points4d[:3] / points4d[3]).T
+        #print(points3d.shape)
 
         # to filter by reprojection error, we can compute the reprojection of these points into both views and check the error against the original 2D points.
         errors_reg = week3.compute_reprojection_errors(points3d, pts_reg, K, R_reg, t_reg)
         errors_new = week3.compute_reprojection_errors(points3d, pts_new, K, R_new, t_new)
-        keep_mask = (errors_reg < max_reprojection_error) & (errors_new < max_reprojection_error)
-
+        reproj_mask = (errors_reg < max_reprojection_error) & (errors_new < max_reprojection_error)
+        
+        finite_mask = np.isfinite(points3d).all(axis=1)
+        z1, z2 = week3.compute_depths(points3d, R_reg, t_reg)
+        z3, z4 = week3.compute_depths(points3d, R_new, t_new)
+        depth_mask = (z1 > 0) & (z2 > 0) & (z3 > 0) & (z4 > 0) 
+        
+        keep_mask = reproj_mask & finite_mask & depth_mask
+        
         kept_points3d = points3d[keep_mask]
         if len(kept_points3d) == 0:
             continue
@@ -634,7 +728,6 @@ def triangulate_and_append_new_points(
     print(f'Total new points added {new_points_count}')
     return new_points_count
 
-
 def register_next_image(
     week2,
     week3,
@@ -647,30 +740,54 @@ def register_next_image(
     confidence: float,
     min_pnp_inliers: int,
     ) -> bool:
-    correspondences3d = []
-    correspondences2d = []
+    #correspondences3d = []
+    #correspondences2d = []
+    correspondence_rows = []
     for reg_id in state.registered_images:
         pair = (reg_id, image_id) if (reg_id, image_id) in all_matches else (image_id, reg_id)
         matches = all_matches.get(pair)
         if matches is None:
             continue
-        pts3d, pts2d = build_2d3d_correspondences_to_model(
-            features,
-            state,
-            matches,
-            registered_image=reg_id,
-            new_image=image_id,
-        )
+        pts3d, pts2d, point_ids, kp_ids = build_2d3d_correspondences_to_model(features,
+                                                                              state,
+                                                                              matches,
+                                                                              registered_image=reg_id,
+                                                                              new_image=image_id,
+                                                                              pair= pair
+                                                                              )  
+                                                                              
         print(f'3D points between registered {reg_id} and unregistered image {image_id}: {len(pts3d)}')
-        if len(pts3d):
-            correspondences3d.append(pts3d)
-            correspondences2d.append(pts2d)
+        #if len(pts3d):
+        #    correspondences3d.append(pts3d)
+        #    correspondences2d.append(pts2d)
+        for X, x, pid, kid in zip(pts3d, pts2d, point_ids, kp_ids):
+            correspondence_rows.append((pid, kid, X, x))
 
-    if not correspondences3d:
-        return False
 
-    points3d = np.vstack(correspondences3d)
-    pts2d = np.vstack(correspondences2d)
+    #if not correspondences3d:
+    #    return False
+
+    #points3d = np.vstack(correspondences3d)
+    #pts2d = np.vstack(correspondences2d)
+    best_by_pid = {}
+    for pid, kid, X, x in correspondence_rows:
+        if pid not in best_by_pid:
+            best_by_pid[pid] = (kid, X, x)
+
+    rows = list(best_by_pid.items())
+
+    seen_kp = set()
+    final_X, final_x = [], []
+    for _, (kid, X, x) in rows:
+        if kid in seen_kp:
+            continue
+        seen_kp.add(kid)
+        final_X.append(X)
+        final_x.append(x)
+
+    points3d = np.asarray(final_X, dtype=np.float64)
+    pts2d = np.asarray(final_x, dtype=np.float64)
+    
     if len(points3d) < 6:
         return False
 
@@ -684,14 +801,22 @@ def register_next_image(
 
     inlier_count = int(np.sum(pnp_mask))
     print(f'Inlier count:{inlier_count}')
+    
     if inlier_count < min_pnp_inliers:
+        return False
+
+    inlier_X = points3d[pnp_mask.ravel().astype(bool)]
+    inlier_x = pts2d[pnp_mask.ravel().astype(bool)]
+    errs = week3.compute_reprojection_errors(inlier_X, inlier_x, K, R_new, t_new)
+
+    if np.median(errs) > 5.0 or np.mean(errs) > 10.0:
         return False
 
     state.camera_rotations[image_id] = R_new
     state.camera_translations[image_id] = t_new
     state.registered_images.append(image_id)
     state.unregistered_images.remove(image_id)
-
+    
     triangulate_and_append_new_points(
         week2,
         week3,
@@ -704,7 +829,6 @@ def register_next_image(
     )
     
     return True
-
 
 def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
     week2 = load_week2_module(args.week2_dir)
@@ -738,6 +862,10 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         args.ransac_threshold,
         args.confidence,
     )
+
+    if args.draw_graph:
+        out = (Path(args.output_dir) / "pairwise_match_graph.png")
+        draw_pairwise_match_graph(week2, edges, out)
 
     pairwise_matches: dict[tuple[int, int], list] = {}
     for edge in edges:
