@@ -510,7 +510,7 @@ def choose_next_image(
                     single_counts[obs] = single_counts.get(obs, 0) + 1
             if single_counts:
                 max_local_support = max(single_counts.values())
-
+        print(f'Image {image_id} max_local_support: {max_local_support}')
         # Update the best candidate
         if max_local_support > best_support:
             best_support = max_local_support
@@ -620,7 +620,7 @@ def triangulate_and_append_new_points(
         # Update state.tracks with the new points 
         # so that these features are considered "registered" in future iterations and won't 
         # be used for 2D-3D correspondences anymore.
-
+        print(f'New points from single registered image {reg_id}: {int(np.sum(keep_mask))}')
         for (kp_reg, kp_new), keep in zip(unmapped_indices, keep_mask):
             if not keep:
                 continue
@@ -631,7 +631,7 @@ def triangulate_and_append_new_points(
 
             start_index += 1
             new_points_count += 1
-
+    print(f'Total new points added {new_points_count}')
     return new_points_count
 
 
@@ -661,6 +661,7 @@ def register_next_image(
             registered_image=reg_id,
             new_image=image_id,
         )
+        print(f'3D points between registered {reg_id} and unregistered image {image_id}: {len(pts3d)}')
         if len(pts3d):
             correspondences3d.append(pts3d)
             correspondences2d.append(pts2d)
@@ -682,6 +683,7 @@ def register_next_image(
     )
 
     inlier_count = int(np.sum(pnp_mask))
+    print(f'Inlier count:{inlier_count}')
     if inlier_count < min_pnp_inliers:
         return False
 
@@ -753,7 +755,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
 
     plotter = ReconstructionPlotter(window_name="Live GF4 Reconstruction")
     plotter.update(state, K)
-    time.sleep(1)
+    time.sleep(2)
     while state.unregistered_images:
         #next_image = choose_next_image(features, state, pairwise_matches)
         next_image = choose_next_image(state, pairwise_matches)
@@ -777,7 +779,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         print(f"Registered image {next_image} ({len(state.registered_images)} total), {len(state.points3d)} points")
         # to consider appending metrics to a CSV after each successful registration
         plotter.update(state, K)
-        time.sleep(1)
+        time.sleep(2)
     print("Reconstruction complete. Close the 3D viewer window to continue.")
     plotter.vis.run() 
     o3d.io.write_point_cloud(output_dir/"reconstruction.ply", plotter.point_cloud)
