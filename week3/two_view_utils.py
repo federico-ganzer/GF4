@@ -15,7 +15,6 @@ from typing import Iterable
 import cv2
 import numpy as np
 
-
 @dataclass
 class TwoViewResult:
     """Container for Week 3 two-view reconstruction metrics."""
@@ -386,6 +385,10 @@ def estimate_camera_pose_pnp(
         reprojectionError=threshold, 
         confidence=confidence
         )
+
+    if not success or inliers is None:
+        return np.eye(3), np.zeros((3, 1)), np.zeros((points3d.shape[0],), dtype=bool)
+    
 
     R3, _ = cv2.Rodrigues(rvec)
 
