@@ -12,6 +12,9 @@ import numpy as np
 import time
 import matplotlib.pyplot as plt
 
+import ba_utils as ba
+
+
 import os
 os.environ["XDG_SESSION_TYPE"] = "x11"
 
@@ -616,28 +619,158 @@ def choose_next_image(
     
     return best_image
 
+def observations_by_image(state):
+    obs = {}
+    for (img_id, kp_idx), point_id in state.tracks.items():
+        obs.setdefault(img_id, set()).add(point_id)
+    return obs
+
+def choose_active_camera_ids(state, new_image_id, max_neighbors=4):
+    '''
+    Select the local camera window for bundle adjustment.
+    
+    Returns:
+        [new_image_id, neighbour_1, neightbour_2, ..., neighbour_max]
+    '''
+    obs = observations_by_image(state) 
+    # For now rebuild every time. Could upgrade to a maintained state in ReconstructionState. 
+    # state.image_to_points and state.point_to_images
+    new_points = obs.get(new_image_id, set())
+
+    scores = []
+    for cam_id in state.registered_images:
+        if cam_id == new_image_id:
+            continue
+        # score candidates based number of shared visible reconstructed 3d points.
+        shared = len(new_points & obs.get(cam_id, set()))
+        if shared > 0:
+            scores.append((shared, cam_id))
+
+    scores.sort(reverse=True)
+    neighbors = [cam_id for _, cam_id in scores[:max_neighbors]]
+    return [new_image_id] + neighbors
+
+def choose_active_point_ids(state, active_camera_ids, min_active_obs=2):
+    '''
+    Select the 3D points belonging to the BA window.
+    
+    Returns:
+        [(img_idx, kp_idx), ... ]
+    '''
+    
+    active_set = set(active_camera_ids)
+
+    point_to_active_obs = {}
+    for (img_id, kp_idx), point_id in state.tracks.items():
+        if img_id not in active_set:
+            continue
+        point_to_active_obs.setdefault(point_id, []).append((img_id, kp_idx))
+
+    active_point_ids = [
+        point_id
+        for point_id, obs in point_to_active_obs.items()
+        if len(obs) >= min_active_obs
+    ]
+    return active_point_ids, point_to_active_obs
 
 def bundle_adjustment(
     state: ReconstructionState,
     features: list,
-    K: np.array
+    K: np.array,
+    new_image_id: int,
+    window_size: int = 5
 ) -> None:
     """
-    Perform Sparse Global Bundle Adjustment
-
-    TODO: Implement this function.
+    Perform Sparse Local Bundle Adjustment
     """
-    camera_ids = state.registered_images
-    camera_to_idx = {cam_id: i for i, cam_id in enumerate(camera_ids)}
+    # Find (window_size - 1) Nearest neighbour cameras based on shared point appearances
+    active_camera_ids = choose_active_camera_ids(state, new_image_id, window_size - 1)
+    # Find all points that appear in this active set of cameras
+    active_point_ids, point_to_active_obs = choose_active_point_ids(state, active_camera_ids)
+    
+    if len(active_camera_ids) < 2 or len(active_point_ids) < 2:
+        return
+    
+    # create local dictionaries
+    cam_id_to_local = {cam_id: i for i, cam_id in enumerate(active_camera_ids)}
+    pt_id_to_local = {pt_id: i for i, pt_id in enumerate(active_point_ids)}
+    
+    # perpare active camera params for packing --> BA
+    camera_params0 = []
+    for cam_id in active_camera_ids:
+        R = state.camera_rotations[cam_id]
+        t = state.camera_translations[cam_id].reshape(3)
+        rvec, _ = cv2.Rodrigues(R)
+        camera_params0.append(np.hstack([rvec.ravel(), t]))
 
-    n_cameras = len(camera_ids)
-    n_points = len(state.points3d)
-
-    camera_indeces = []
+    camera_params0 = np.asarray(camera_params0, dtype=np.float64)
+    points3d0 = state.points3d[active_point_ids].astype(np.float64)
+    
+    #For each local observation we need:
+    #   - which local camera sees it
+    #   - which local 3D point it is
+    #   - what the measured 2D pixel location is
+    
+    camera_indices = []
     point_indices = []
     points_2d = []
+    
+    for point_id in active_point_ids:
+        local_pt_idx = pt_id_to_local[point_id]
+        for img_id, kp_idx in point_to_active_obs[point_id]:
+            if img_id not in cam_id_to_local:
+                continue
+            local_cam_idx = cam_id_to_local[img_id]
+            uv = features[img_id].keypoints[kp_idx].pt
 
-    pass
+            camera_indices.append(local_cam_idx)
+            point_indices.append(local_pt_idx)
+            points_2d.append(uv)
+
+    camera_indices = np.asarray(camera_indices, dtype=np.int32)
+    point_indices = np.asarray(point_indices, dtype=np.int32)
+    points_2d = np.asarray(points_2d, dtype=np.float64)
+    
+    if len(points_2d) == 0:
+        return
+    # Fix a camera to stabilize the optimization
+    
+    fixed_camera_mask = np.zeros(len(active_camera_ids), dtype=bool)
+    fixed_camera_mask[-1] = True # Fix the oldest observation (should be the most refined?) 
+    fixed_camera_params = camera_params0.copy()
+    
+    n_cams = camera_params0.shape[0]
+    n_pts = points3d0.shape[0]
+    
+    result = ba.least_squares_fit(camera_params0,
+                                  points3d0,
+                                  n_cams,
+                                  n_pts,
+                                  camera_indices,
+                                  point_indices,
+                                  points_2d,
+                                  K,
+                                  fixed_camera_mask,
+                                  fixed_camera_params)
+    
+    cam_params_opt, pts3d_opt = ba.unpack_params(result.x, n_cams, n_pts)
+    
+    cam_params_opt[fixed_camera_mask] = fixed_camera_params[fixed_camera_mask]
+    
+    #Write optimized camera parameters in global reconstruction
+    for cam_id, cam_param in zip(active_camera_ids, cam_params_opt):
+        rvec = cam_param[:3]
+        tvec = cam_param[3:].reshape(3, 1)
+        R = ba.rodrigues_to_R(rvec)
+
+        state.camera_rotations[cam_id] = R
+        state.camera_translations[cam_id] = tvec
+
+    #Write optimized 3D point coordinates
+    for pt_id, X in zip(active_point_ids, pts3d_opt):
+        state.points3d[pt_id] = X
+    
+    return
 
 
 
@@ -962,10 +1095,10 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         )
         if not accepted:
             break
+        bundle_adjustment(state, features, K, next_image)
         print(f"Registered image {next_image} ({len(state.registered_images)} total), {len(state.points3d)} points")
         # to consider appending metrics to a CSV after each successful registration
         plotter.update(state, K)
-        bundle_adjustment(state, features, K)
         # time.sleep(2)
         t_end = time.time() + 2
         while time.time() < t_end:
