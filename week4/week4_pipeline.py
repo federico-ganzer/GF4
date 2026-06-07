@@ -532,6 +532,10 @@ def choose_next_image(
     keypoints that are part of existing 3D tracks in the model. This will ensure 
     that the next image has enough overlap with the existing reconstruction to be 
     successfully registered with PnP.
+
+    Indicators used:
+     - shared RANSAC inliers
+     - 
     """
     best_image = None
     best_support = 0
