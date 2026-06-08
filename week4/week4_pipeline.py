@@ -238,6 +238,12 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Path to save the pairwise match graph image.",
     )
+    parser.add_argument(
+        "--bundle-adjustment",
+        action="store_true",
+        default=False,
+        help= 'Conduct Bundle Adjustment'
+    )
 
     args = parser.parse_args()
     if args.max_image_size == 0:
@@ -1087,7 +1093,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         if not accepted_any:
             break
         
-        if len(state.registered_images) > 5 and len(state.registered_images) % 4 == 0:
+        if len(state.registered_images) > 5 and len(state.registered_images) % 4 == 0 and args.bundle_adjustment:
             bundle_adjustment(state, features, K, next_image)
         print(f"Registered image {next_image} ({len(state.registered_images)} total), {len(state.points3d)} points")
         # to consider appending metrics to a CSV after each successful registration
@@ -1106,6 +1112,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
 
 def main() -> int:
     args = parse_args()
+    week2 = load_week2_module(args.week2_dir)
     try:
         state = incremental_reconstruction(args)
     except NotImplementedError as exc:
