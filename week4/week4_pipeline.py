@@ -332,18 +332,11 @@ def compute_pairwise_match_graph(
             )
     return edges
 
-
 def draw_pairwise_match_graph(week2, edges: list[PairwiseEdge], output_path: Path | None = None) -> None:
-    """Draw a simple circular view-graph where nodes are images and edges are
-    weighted by RANSAC inlier counts.
-
-    - `edges` is a list of `PairwiseEdge` objects.
-    - If `output_path` is provided the figure is saved, otherwise shown.
-    """
+    edges = [e for e in edges if e.inlier_count > 750]
     if not edges:
         return
 
-    # gather nodes
     nodes = set()
     for e in edges:
         nodes.add(e.image_i)
@@ -352,48 +345,46 @@ def draw_pairwise_match_graph(week2, edges: list[PairwiseEdge], output_path: Pat
     n = len(nodes)
     idx = {node: i for i, node in enumerate(nodes)}
 
-    # positions on a circle
     angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
     pos = {node: (np.cos(a), np.sin(a)) for node, a in zip(nodes, angles)}
 
-    # edge weights
     weights = [e.inlier_count for e in edges]
-    max_w = max(weights) if weights else 1
+    norm = plt.Normalize(vmin=min(weights), vmax=max(weights))
+    cmap = plt.get_cmap("viridis")
 
     fig, ax = plt.subplots(figsize=(8, 8))
-    ax.set_aspect('equal')
-    ax.axis('off')
+    ax.set_aspect("equal")
+    ax.axis("off")
 
-    # draw nodes
     xs = [pos[node][0] for node in nodes]
     ys = [pos[node][1] for node in nodes]
-    ax.scatter(xs, ys, s=300, c='tab:blue')
+    ax.scatter(xs, ys, s=300, c="tab:blue")
 
-    # labels
     for node in nodes:
         x, y = pos[node]
-        ax.text(x * 1.12, y * 1.12, str(node), ha='center', va='center')
+        ax.text(x * 1.12, y * 1.12, str(node), ha="center", va="center")
 
-    # draw edges
     for e in edges:
         i = e.image_i
         j = e.image_j
         x1, y1 = pos[i]
         x2, y2 = pos[j]
         w = e.inlier_count
-        lw = 0.5 + 4.0 * (w / max_w)
-        ax.plot([x1, x2], [y1, y2], c='gray', linewidth=lw, alpha=0.8)
-        # annotate weight near midpoint
-        mx, my = 0.5 * (x1 + x2), 0.5 * (y1 + y2)
-        ax.text(mx, my, str(w), color='k', fontsize=8, ha='center', va='center')
+        color = cmap(norm(w))
+        lw = 0.5 + 4.0 * (w / max(weights)) if max(weights) > 0 else 1.0
+        ax.plot([x1, x2], [y1, y2], c=color, linewidth=lw, alpha=0.85)
+
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array(weights)
+    cbar = fig.colorbar(sm, ax=ax, fraction=0.046, pad=0.04)
+    cbar.set_label("RANSAC inlier count")
 
     if output_path is not None:
         week2.ensure_dir(output_path.parent)
-        plt.savefig(output_path, dpi=200, bbox_inches='tight')
+        plt.savefig(output_path, dpi=200, bbox_inches="tight")
         plt.close(fig)
     else:
         plt.show()
-
 
 def choose_initial_pair(edges: list[PairwiseEdge]) -> PairwiseEdge:
     if not edges:
@@ -495,10 +486,10 @@ def build_2d3d_correspondences_to_model(
         new_kp_ids.append(kp_new)
 
     if not points3d:
-        return np.empty((0, 3), dtype=np.float64), np.empty((0, 2), dtype=np.float64)
+        return (np.empty((0, 3), dtype=np.float64), np.empty((0, 2), dtype=np.float64), 
+                np.empty((0,), dtype=np.float64),np.empty((0,), dtype=np.float64))
     return (np.asarray(points3d, dtype=np.float64), np.asarray(pts2d, dtype=np.float64), 
-            np.asarray(point_ids, dtype=np.float64), np.asarray(new_kp_ids, dtype=np.float64)
-            )
+            np.asarray(point_ids, dtype=np.float64), np.asarray(new_kp_ids, dtype=np.float64))
 
 
 def choose_next_image(
@@ -714,7 +705,7 @@ def bundle_adjustment(
     # Fix a camera to stabilize the optimization
     
     fixed_camera_mask = np.zeros(len(active_camera_ids), dtype=bool)
-    fixed_camera_mask[-1] = True # Fix the oldest observation (should be the most refined?) 
+    fixed_camera_mask[1] = True # Fix the strongest neighbour (should be the most refined?) 
     fixed_camera_params = camera_params0.copy()
     
     n_cams = camera_params0.shape[0]
@@ -1072,7 +1063,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         #next_image = choose_next_image(state, pairwise_matches)
         
         next_candidates = rank_candidate_images(state, pairwise_matches)
-        
+        accepted_any = False
         for next_image in next_candidates:
             if next_image is None:
                 print('Next image not found.')
@@ -1090,10 +1081,14 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
                 args.min_pnp_inliers,
             )
             if accepted:
+                accepted_any = True
                 break
         
-        #if len(state.registered_images) > 5 and len(state.registered_images) % 5 == 0:
-        #    bundle_adjustment(state, features, K, next_image)
+        if not accepted_any:
+            break
+        
+        if len(state.registered_images) > 5 and len(state.registered_images) % 4 == 0:
+            bundle_adjustment(state, features, K, next_image)
         print(f"Registered image {next_image} ({len(state.registered_images)} total), {len(state.points3d)} points")
         # to consider appending metrics to a CSV after each successful registration
         plotter.update(state, K)
