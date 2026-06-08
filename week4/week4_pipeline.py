@@ -1141,6 +1141,9 @@ def main() -> int:
     # 4. csv of shared ransac inliers between triplets
     #     - every line is a registered image
 
+    week2 = load_week2_module(args.week2_dir)
+    week3 = load_week3_module(args.week3_dir)
+
     point_observers = {}
 
     for (img_id, kp_idx), point_id in state.tracks.items():
