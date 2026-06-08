@@ -1127,7 +1127,6 @@ def main() -> int:
     print(f"  wrote: {args.output_dir}")
 
 
-<<<<<<< HEAD
     # camera_poses = []
     # for img_id in state.registered_images:
     #     camera_poses.append((
@@ -1147,8 +1146,6 @@ def main() -> int:
     # 4. csv of shared ransac inliers between triplets
     #     - every line is a registered image
 
-=======
->>>>>>> ba7d038de325855fa5b452edaa9bf18127465eea
 
     return 0
 
