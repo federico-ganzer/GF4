@@ -19,30 +19,6 @@ import os
 os.environ["XDG_SESSION_TYPE"] = "x11"
 
 
-
-'''from week3.two_view_utils import (
-    ThirdViewResult,
-    TwoViewResult,
-    build_2d3d_correspondences,
-    compute_depths,
-    compute_reprojection_errors,
-    draw_reprojection_overlay,
-    draw_single_image_reprojection_overlay,
-    ensure_dir,
-    estimate_essential_matrix,
-    estimate_camera_pose_pnp,
-    filter_reconstructed_points,
-    make_camera_matrix,
-    plot_multi_view_reconstruction,
-    plot_patch_cloud_reconstruction,
-    plot_two_view_reconstruction,
-    recover_relative_pose,
-    sample_point_colours,
-    save_csv,
-    triangulate_points,
-    write_ply,
-)'''
-
 DEFAULT_WEEK2_DIR = Path(__file__).resolve().parents[1] / "week2"
 DEFAULT_WEEK3_DIR = Path(__file__).resolve().parents[1] / "week3"
 
@@ -681,7 +657,7 @@ def bundle_adjustment(
     window_size: int = 5
 ) -> None:
     """
-    Perform Sparse Local Bundle Adjustment
+    Perform Local Bundle Adjustment
     """
     # Find (window_size - 1) Nearest neighbour cameras based on shared point appearances
     active_camera_ids = choose_active_camera_ids(state, new_image_id, window_size - 1)
@@ -707,9 +683,9 @@ def bundle_adjustment(
     points3d0 = state.points3d[active_point_ids].astype(np.float64)
     
     #For each local observation we need:
-    #   - which local camera sees it
-    #   - which local 3D point it is
-    #   - what the measured 2D pixel location is
+    #- which local camera sees it
+    #- which local 3D point it is
+    #- what the measured 2D pixel location is
     
     camera_indices = []
     point_indices = []
@@ -730,6 +706,8 @@ def bundle_adjustment(
     camera_indices = np.asarray(camera_indices, dtype=np.int32)
     point_indices = np.asarray(point_indices, dtype=np.int32)
     points_2d = np.asarray(points_2d, dtype=np.float64)
+    
+    # These are index arrays used by the least squares and the 2d observed points they correspond to
     
     if len(points_2d) == 0:
         return
@@ -771,8 +749,6 @@ def bundle_adjustment(
         state.points3d[pt_id] = X
     
     return
-
-
 
 def triangulate_and_append_new_points(
     week2,
@@ -1017,6 +993,24 @@ def register_next_image(
     
     return True
 
+def rank_candidate_images(state, pairwise_matches):
+    scores = []
+    for image_id in state.unregistered_images:
+        score = 0
+        for reg_id in state.registered_images:
+            pair = (reg_id, image_id) if (reg_id, image_id) in pairwise_matches else (image_id, reg_id)
+            matches = pairwise_matches.get(pair)
+            
+            if matches is not None:
+                score += len(matches)
+                
+        if score > 0:
+            scores.append((score, image_id))
+            
+    scores.sort(reverse=True)
+    
+    return [image_id for _, image in scores]
+
 def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
     week2 = load_week2_module(args.week2_dir)
     week3 = load_week3_module(args.week3_dir)
@@ -1071,39 +1065,41 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
     plotter = ReconstructionPlotter(window_name="Live GF4 Reconstruction")
     plotter.update(state, K)
     # time.sleep(2)
-    t_end = time.time() + 2.0
-    while time.time() < t_end:
-        plotter.vis.poll_events()
-        plotter.vis.update_renderer()
+    plotter.vis.poll_events()
+    plotter.vis.update_renderer()
     while state.unregistered_images:
         #next_image = choose_next_image(features, state, pairwise_matches)
-        next_image = choose_next_image(state, pairwise_matches)
-        if next_image is None:
-            print('Next image not found.')
-            break
-        accepted = register_next_image(
-            week2,
-            week3,
-            features,
-            state,
-            next_image,
-            pairwise_matches,
-            K,
-            args.pnp_ransac_threshold,
-            args.confidence,
-            args.min_pnp_inliers,
-        )
-        if not accepted:
-            break
-        bundle_adjustment(state, features, K, next_image)
+        #next_image = choose_next_image(state, pairwise_matches)
+        
+        next_candidates = rank_candidate_images(state, pairwise_matches)
+        
+        for next_image in next_candidates:
+            if next_image is None:
+                print('Next image not found.')
+                break
+            accepted = register_next_image(
+                week2,
+                week3,
+                features,
+                state,
+                next_image,
+                pairwise_matches,
+                K,
+                args.pnp_ransac_threshold,
+                args.confidence,
+                args.min_pnp_inliers,
+            )
+            if accepted:
+                break
+        
+        #if len(state.registered_images) > 5 and len(state.registered_images) % 5 == 0:
+        #    bundle_adjustment(state, features, K, next_image)
         print(f"Registered image {next_image} ({len(state.registered_images)} total), {len(state.points3d)} points")
         # to consider appending metrics to a CSV after each successful registration
         plotter.update(state, K)
         # time.sleep(2)
-        t_end = time.time() + 2
-        while time.time() < t_end:
-            plotter.vis.poll_events()
-            plotter.vis.update_renderer()
+        plotter.vis.poll_events()
+        plotter.vis.update_renderer()
 
     print("Reconstruction complete. Close the 3D viewer window to continue.")
     plotter.vis.run() 
@@ -1130,18 +1126,6 @@ def main() -> int:
     print(f"  reconstructed points: {len(state.points3d)}")
     print(f"  wrote: {args.output_dir}")
 
-
-    # camera_poses = []
-    # for img_id in state.registered_images:
-    #     camera_poses.append((
-    #         f"Image {img_id}", 
-    #         state.camera_rotations[img_id], 
-    #         state.camera_translations[img_id]
-    #     ))
-
-    # # Save outputs for your report
-    # write_ply(args.output_dir / "final_reconstruction.ply", state.points3d, state.point_colors)
-    # plot_multi_view_reconstruction(state.points3d, state.point_colors, camera_poses, args.output_dir / "camera_trajectory.png")
 
 
     return 0
