@@ -1095,7 +1095,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         )
         if not accepted:
             break
-        bundle_adjustment(state, features, K, next_image)
+        # bundle_adjustment(state, features, K, next_image)
         print(f"Registered image {next_image} ({len(state.registered_images)} total), {len(state.points3d)} points")
         # to consider appending metrics to a CSV after each successful registration
         plotter.update(state, K)
