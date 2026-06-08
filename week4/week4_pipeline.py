@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 
 import ba_utils as ba
 import re_utils as re
-
+import csv
 
 import os
 os.environ["XDG_SESSION_TYPE"] = "x11"
@@ -1065,6 +1065,22 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
     # time.sleep(2)
     plotter.vis.poll_events()
     plotter.vis.update_renderer()
+
+    # initialise csv
+    csv_path = args.output_dir / "incremental_metrics.csv"
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "registered_image_count",
+            "newest_image_id",
+            "total_3d_points",
+            "global_mean_px",
+            "global_median_px",
+            "point_mean_px",
+            "point_median_px"
+        ])
+
+
     while state.unregistered_images:
         #next_image = choose_next_image(features, state, pairwise_matches)
         #next_image = choose_next_image(state, pairwise_matches)
@@ -1097,7 +1113,24 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         if len(state.registered_images) > 5 and len(state.registered_images) % 4 == 0 and args.bundle_adjustment:
             bundle_adjustment(state, features, K, next_image)
         print(f"Registered image {next_image} ({len(state.registered_images)} total), {len(state.points3d)} points")
-        # to consider appending metrics to a CSV after each successful registration
+        # TODO: consider appending metrics to a CSV after each successful registration
+        g_mean, g_med = re_eval.compute_global_reprojection_error(state, features, K, week3)
+        p_mean, p_med = re_eval.compute_pointwise_reprojection_error(state, features, K, week3)
+        print(f"  -> Global Error:   Mean {g_mean:.3f}px | Median {g_med:.3f}px")
+        print(f"  -> Point-wise Err: Mean {p_mean:.3f}px | Median {p_med:.3f}px")
+
+        with open(csv_path, "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                len(state.registered_images),
+                next_image,
+                len(state.points3d),
+                f"{g_mean:.4f}",
+                f"{g_med:.4f}",
+                f"{p_mean:.4f}",
+                f"{p_med:.4f}"
+            ])
+
         plotter.update(state, K)
         # time.sleep(2)
         plotter.vis.poll_events()
