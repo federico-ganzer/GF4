@@ -1141,6 +1141,34 @@ def main() -> int:
     # 4. csv of shared ransac inliers between triplets
     #     - every line is a registered image
 
+    point_observers = {}
+
+    for (img_id, kp_idx), point_id in state.tracks.items():
+        if img_id in state.registered_images:
+            point_observers.setdefault(point_id, []).append(img_id)
+
+    csv_rows = []
+    for img_id in state.registered_images:
+        total_points = 0
+        triplet_shared_points = 0
+
+        for (trk_img, kp_idx), point_id in state.tracks.items():
+            if trk_img == img_id:
+                total_points += 1
+                if point_id in point_observers:
+                    triplet_shared_points += 1
+                
+        csv_rows.append({
+            "image_id": img_id, 
+            "total_3d_points_observed": total_points, 
+            "triplet_shared_points": triplet_shared_points
+            })
+
+    csv_path = args.output_dir / "triplet_inliers.csv"
+    week2.save_csv(csv_path, csv_rows)
+    print(f"Saved triplet inliers CSV to: {csv_path}")
+
+    
 
     return 0
 
