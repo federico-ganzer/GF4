@@ -1162,29 +1162,18 @@ def main() -> int:
     print(f"  remaining images: {len(state.unregistered_images)}")
     print(f"  reconstructed points: {len(state.points3d)}")
 
-    g_mean, g_med = re.compute_global_reprojection_error(state, features, K, week3)
-    p_mean, p_med = re.compute_pointwise_reprojection_error(state, features, K, week3)
+    # g_mean, g_med = re.compute_global_reprojection_error(state, features, K, week3)
+    # p_mean, p_med = re.compute_pointwise_reprojection_error(state, features, K, week3)
 
-    print("Final Reprojection Errors:")
-    print(f"  Global   - Mean: {g_mean:.3f}px, Median: {g_med:.3f}px")
-    print(f"  Point-wise - Mean: {p_mean:.3f}px, Median: {p_med:.3f}px")
+    # print("Final Reprojection Errors:")
+    # print(f"  Global   - Mean: {g_mean:.3f}px, Median: {g_med:.3f}px")
+    # print(f"  Point-wise - Mean: {p_mean:.3f}px, Median: {p_med:.3f}px")
 
 
     print(f"  wrote: {args.output_dir}")
 
 
-    # camera_poses = []
-    # for img_id in state.registered_images:
-    #     camera_poses.append((
-    #         f"Image {img_id}", 
-    #         state.camera_rotations[img_id], 
-    #         state.camera_translations[img_id]
-    #     ))
-
-    # # Save outputs for your report
-    # write_ply(args.output_dir / "final_reconstruction.ply", state.points3d, state.point_colors)
-    # plot_multi_view_reconstruction(state.points3d, state.point_colors, camera_poses, args.output_dir / "camera_trajectory.png")
-
+    
     # TODO: 
     # 1. no of input images
     # 2. no of registered images

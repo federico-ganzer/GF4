@@ -1,0 +1,4 @@
+registered_image_count,newest_image_id,total_3d_points,global_mean_px,global_median_px,point_mean_px,point_median_px
+3,18,1741,0.4902,0.2368,0.4908,0.2367
+4,17,2243,0.6761,0.3124,0.6777,0.3120
+5,16,2630,0.7636,0.3673,0.7653,0.3694
