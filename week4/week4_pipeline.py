@@ -13,6 +13,7 @@ import time
 import matplotlib.pyplot as plt
 
 import ba_utils as ba
+import re_utils as re
 
 
 import os
@@ -1113,6 +1114,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
 def main() -> int:
     args = parse_args()
     week2 = load_week2_module(args.week2_dir)
+    week3 = load_week3_module(args.week3_dir)
     try:
         state = incremental_reconstruction(args)
     except NotImplementedError as exc:
@@ -1126,6 +1128,15 @@ def main() -> int:
     print(f"  registered images: {len(state.registered_images)}")
     print(f"  remaining images: {len(state.unregistered_images)}")
     print(f"  reconstructed points: {len(state.points3d)}")
+
+    g_mean, g_med = re.compute_global_reprojection_error(state, features, K, week3)
+    p_mean, p_med = re.compute_pointwise_reprojection_error(state, features, K, week3)
+
+    print("Final Reprojection Errors:")
+    print(f"  Global   - Mean: {g_mean:.3f}px, Median: {g_med:.3f}px")
+    print(f"  Point-wise - Mean: {p_mean:.3f}px, Median: {p_med:.3f}px")
+
+
     print(f"  wrote: {args.output_dir}")
 
 
@@ -1147,9 +1158,6 @@ def main() -> int:
     # 3. no of sparse points
     # 4. csv of shared ransac inliers between triplets
     #     - every line is a registered image
-
-    week2 = load_week2_module(args.week2_dir)
-    week3 = load_week3_module(args.week3_dir)
 
     point_observers = {}
 
