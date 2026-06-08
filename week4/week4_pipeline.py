@@ -706,7 +706,7 @@ def bundle_adjustment(
     camera_params0 = np.asarray(camera_params0, dtype=np.float64)
     points3d0 = state.points3d[active_point_ids].astype(np.float64)
     
-    #For each local observation we need:
+    # For each local observation we need:
     #   - which local camera sees it
     #   - which local 3D point it is
     #   - what the measured 2D pixel location is
@@ -1142,6 +1142,13 @@ def main() -> int:
     # # Save outputs for your report
     # write_ply(args.output_dir / "final_reconstruction.ply", state.points3d, state.point_colors)
     # plot_multi_view_reconstruction(state.points3d, state.point_colors, camera_poses, args.output_dir / "camera_trajectory.png")
+
+    # TODO: 
+    # 1. no of input images
+    # 2. no of registered images
+    # 3. no of sparse points
+    # 4. csv of shared ransac inliers between triplets
+    #     - every line is a registered image
 
 
     return 0
