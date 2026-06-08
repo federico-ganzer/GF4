@@ -31,7 +31,6 @@ def compute_global_reprojection_error(
         points3d = state.points3d[pt_indices]
         pts2d = np.array([features[img_id].keypoints[idx].pt for idx in kp_indices], dtype=np.float64)
 
-        # Leverage the existing week3 utility
         errors = week3.compute_reprojection_errors(points3d, pts2d, K, R, t)
         all_errors.append(errors)
 
