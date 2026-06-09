@@ -718,6 +718,8 @@ def bundle_adjustment(
     n_cams = camera_params0.shape[0]
     n_pts = points3d0.shape[0]
     
+    # perform non-linear least_squares fit on camera poses and points3d with fixed camera
+    
     result = ba.least_squares_fit(camera_params0,
                                   points3d0,
                                   n_cams,
