@@ -1113,7 +1113,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         if len(state.registered_images) > 3 and len(state.registered_images) % 4 == 0 and args.bundle_adjustment:
             bundle_adjustment(state, features, K, next_image, window_size=3)
         print(f"Registered image {next_image} ({len(state.registered_images)} total), {len(state.points3d)} points")
-        # TODO: consider appending metrics to a CSV after each successful registration
+        # Update csv output
         g_mean, g_med = re.compute_global_reprojection_error(state, features, K, week3)
         p_mean, p_med = re.compute_pointwise_reprojection_error(state, features, K, week3)
         print(f"  -> Global Error:   Mean {g_mean:.3f}px | Median {g_med:.3f}px")
