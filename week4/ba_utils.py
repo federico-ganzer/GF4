@@ -35,6 +35,10 @@ def residuals_fn(
     fixed_camera_mask,
     fixed_camera_params,
 ):
+    '''
+    Calculate reprojection error based residual function in batches for each camera.
+    '''
+    
     cam_params, pts3d = unpack_params(x, n_cams, n_pts)
     cam_params[fixed_camera_mask] = fixed_camera_params[fixed_camera_mask]
 
@@ -55,8 +59,16 @@ def residuals_fn(
     return residuals.ravel()
 
 def build_jac_sparsity(n_cams, n_pts, camera_indices, point_indices):
+    '''
+    Suggested jacobian to speed up non-linear least squares:
+    
+    https://scipy-cookbook.readthedocs.io/items/bundle_adjustment.html
+    
+    since problem is sparse, this matrix tells least squares which components of the jacobian need to be computed and which not.
+    '''
+    
     m = len(camera_indices) * 2
-    n = 6 * n_cams + 3 * n_pts
+    n = 6 * n_cams + 3 * n_pts # 6 parameters in rvec, 3 parameters 
     A = lil_matrix((m, n), dtype=bool)
 
     for obs_id, (cam_idx, pt_idx) in enumerate(zip(camera_indices, point_indices)):
