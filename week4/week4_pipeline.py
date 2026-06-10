@@ -498,7 +498,6 @@ def build_2d3d_correspondences_to_model(
     return (np.asarray(points3d, dtype=np.float64), np.asarray(pts2d, dtype=np.float64), 
             np.asarray(point_ids, dtype=np.float64), np.asarray(new_kp_ids, dtype=np.float64))
 
-
 def choose_next_image(
     state: ReconstructionState,
     all_matches: dict[tuple[int, int], list],
@@ -508,7 +507,7 @@ def choose_next_image(
     most 2D matches to already registered images, where the 2D matches must be to 
     keypoints that are part of existing 3D tracks in the model. This will ensure 
     that the next image has enough overlap with the existing reconstruction to be 
-    successfully registered with PnP. (NOT USED)
+    successfully registered with PnP. (RANK BASED + SUPPORT CHECK)
 
     Indicators used:
      - shared RANSAC inliers
@@ -523,6 +522,8 @@ def choose_next_image(
             if point_id not in point_observers:
                 point_observers[point_id] = set()
             point_observers[point_id].add(img_id)
+
+    scores = []
 
     for image_id in state.unregistered_images:
         # To gather all unique 3D points that this unregistered image matches
@@ -587,10 +588,13 @@ def choose_next_image(
         if max_local_support > best_support:
             best_support = max_local_support
             best_image = image_id
+
+        if max_local_support > 0:
+            scores.append((max_local_support, image_id))
             
+    scores.sort(reverse=True)
    
-    
-    return best_image
+    return [image_id for _, image_id in scores]
 
 def observations_by_image(state):
     """
@@ -1135,7 +1139,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         #next_image = choose_next_image(features, state, pairwise_matches)
         #next_image = choose_next_image(state, pairwise_matches)
         
-        next_candidates = rank_candidate_images(state, pairwise_matches)
+        next_candidates = rank_candidate_images(state, pairwise_matches) # substitute with choose_image to use support based ranking
         accepted_any = False
         for next_image in next_candidates:
             if next_image is None:
@@ -1214,7 +1218,163 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
     plotter.close()
 
     return state
+    week2 = load_week2_module(args.week2_dir)
+    week3 = load_week3_module(args.week3_dir)
+    output_dir = week2.ensure_dir(args.output_dir)
 
+    start_time = time.perf_counter()
+
+    images = args.images
+    if args.image_dir is not None:
+        images = expand_image_dir(args.image_dir)
+    elif images is not None and len(images) == 1 and images[0].is_dir():
+        images = expand_image_dir(images[0])
+
+    features = week2.precompute_image_features(
+        images,
+        max_features=args.max_features,
+        max_image_size=args.max_image_size,
+    )
+
+    K = week3.make_camera_matrix(
+        features[0].image.shape,
+        focal_length_px=args.focal_length_px,
+        principal_point=None if args.principal_point is None else tuple(args.principal_point),
+    )
+
+    edges = compute_pairwise_match_graph(
+        week2,
+        week3,
+        features,
+        K,
+        args.ratio,
+        args.ransac_threshold,
+        args.confidence,
+    )
+
+    if args.draw_graph:
+        out = (Path(args.output_dir) / "pairwise_match_graph.png")
+        draw_pairwise_match_graph(week2, edges, out)
+
+    pairwise_matches: dict[tuple[int, int], list] = {}
+    for edge in edges:
+        pairwise_matches[(edge.image_i, edge.image_j)] = edge.matches
+
+    initial_edge = choose_initial_pair(edges)
+    state = register_initial_pair(
+        week2,
+        week3,
+        features,
+        initial_edge,
+        K,
+        max_reprojection_error=args.max_reprojection_error,
+    )
+    end_pre_time = time.perf_counter()
+    plotter = ReconstructionPlotter(window_name="Live GF4 Reconstruction")
+    plotter.update(state, K)
+    # time.sleep(2)
+    plotter.vis.poll_events()
+    plotter.vis.update_renderer()
+
+    # initialise csv
+    csv_path = args.output_dir / "incremental_metrics.csv"
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "registered_image_count",
+            "newest_image_id",
+            "total_3d_points",
+            "global_mean_px",
+            "global_median_px",
+            "point_mean_px",
+            "point_median_px"
+        ])
+
+    pnp_inlier_counts = []
+    while state.unregistered_images:
+        #next_image = choose_next_image(features, state, pairwise_matches)
+        #next_image = choose_next_image(state, pairwise_matches)
+        
+        # next_candidates = rank_candidate_images(state, pairwise_matches)
+        next_candidates = choose_next_image(state, pairwise_matches)
+        accepted_any = False
+        for next_image in next_candidates:
+            if next_image is None:
+                print('Next image not found.')
+                break
+            accepted, inlier_count = register_next_image(
+                week2,
+                week3,
+                features,
+                state,
+                next_image,
+                pairwise_matches,
+                K,
+                args.pnp_ransac_threshold,
+                args.confidence,
+                args.min_pnp_inliers,
+                args.output_dir
+            )
+            if accepted:
+                pnp_inlier_counts.append(inlier_count)
+                accepted_any = True
+                break
+        
+        if not accepted_any:
+            g_mean, g_med = re.compute_global_reprojection_error(state, features, K, week3)
+            p_mean, p_med = re.compute_pointwise_reprojection_error(state, features, K, week3)
+            print(f"  -> Global Error:   Mean {g_mean:.3f}px | Median {g_med:.3f}px")
+            print(f"  -> Point-wise Err: Mean {p_mean:.3f}px | Median {p_med:.3f}px")
+            print(f"  -> Median PnP Inlier Count: {np.median(pnp_inlier_counts)}")
+            with open(csv_path, "a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                len(state.registered_images),
+                next_image,
+                len(state.points3d),
+                f"{g_mean:.4f}",
+                f"{g_med:.4f}",
+                f"{p_mean:.4f}",
+                f"{p_med:.4f}"
+            ])
+            break
+        
+        # if len(state.registered_images) > 3 and len(state.registered_images) % 4 == 0 and args.bundle_adjustment:
+        bundle_adjustment(state, features, K, next_image, window_size=3)
+        print(f"Registered image {next_image} ({len(state.registered_images)} total), {len(state.points3d)} points")
+        g_mean, g_med = re.compute_global_reprojection_error(state, features, K, week3)
+        p_mean, p_med = re.compute_pointwise_reprojection_error(state, features, K, week3)
+        print(f"  -> Global Error:   Mean {g_mean:.3f}px | Median {g_med:.3f}px")
+        print(f"  -> Point-wise Err: Mean {p_mean:.3f}px | Median {p_med:.3f}px")
+        print(f"  -> Median PnP Inlier Count: {np.median(pnp_inlier_counts)}")
+
+        with open(csv_path, "a", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow([
+                len(state.registered_images),
+                next_image,
+                len(state.points3d),
+                f"{g_mean:.4f}",
+                f"{g_med:.4f}",
+                f"{p_mean:.4f}",
+                f"{p_med:.4f}"
+            ])
+
+        plotter.update(state, K)
+        # time.sleep(2)
+        plotter.vis.poll_events()
+        plotter.vis.update_renderer()
+    
+    end_time = time.perf_counter()
+    print(f"Seed runtime: {end_pre_time - start_time}s")
+    print(f"Total runtime: {end_time - start_time}s")
+
+    print("Reconstruction complete. Close the 3D viewer window to continue.")
+    plotter.vis.run() 
+    o3d.io.write_point_cloud(output_dir/"reconstruction.ply", plotter.point_cloud)
+    plotter.close()
+
+    return state
 
 def main() -> int:
     args = parse_args()
