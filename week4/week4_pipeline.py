@@ -131,7 +131,6 @@ def load_week3_module(week3_dir: Path):
     spec.loader.exec_module(module)
     return module
 
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="GF4 Week 4 incremental sparse reconstruction pipeline."
@@ -276,14 +275,11 @@ def parse_args() -> argparse.Namespace:
 
     return args
 
-
 def _median(values: np.ndarray) -> float | None:
     return float(np.median(values)) if len(values) else None
 
-
 def _mean(values: np.ndarray) -> float | None:
     return float(np.mean(values)) if len(values) else None
-
 
 def expand_image_dir(image_dir: Path) -> list[Path]:
     supported_ext = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
@@ -297,7 +293,6 @@ def expand_image_dir(image_dir: Path) -> list[Path]:
     if not images:
         raise ValueError(f"No supported image files found in directory: {image_dir}")
     return images
-
 
 def compute_pairwise_match_graph(
     week2,
@@ -403,7 +398,6 @@ def choose_initial_pair(edges: list[PairwiseEdge]) -> PairwiseEdge:
     if not edges:
         raise ValueError("No valid pairwise edges found for an initial reconstruction.")
     return max(edges, key=lambda edge: edge.inlier_count)
-
 
 def register_initial_pair(
     week2,
@@ -514,7 +508,7 @@ def choose_next_image(
     most 2D matches to already registered images, where the 2D matches must be to 
     keypoints that are part of existing 3D tracks in the model. This will ensure 
     that the next image has enough overlap with the existing reconstruction to be 
-    successfully registered with PnP. (NOT USED RANK BASED : PLS IGNORE)
+    successfully registered with PnP. (NOT USED)
 
     Indicators used:
      - shared RANSAC inliers
@@ -1020,8 +1014,6 @@ def rank_candidate_images(state, pairwise_matches):
     scores.sort(reverse=True)
     
     return [image_id for _, image in scores]
-
-
 
 def draw_correspondence_matches(
     features,
