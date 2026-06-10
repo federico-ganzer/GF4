@@ -62,6 +62,7 @@ python week4_pipeline.py \
 - `--min-pnp-inliers INT` : minimum PnP inliers required to accept a new image
 - `--draw-graph` : save a visualization of the pairwise match graph
 - `--bundle-adjustment` : enable bundle adjustment
+- `--support-rank` : enable support-based ranking for image selection
 
 ### Example with more controls
 

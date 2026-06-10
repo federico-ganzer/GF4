@@ -244,11 +244,17 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help= 'Conduct Bundle Adjustment'
     )
-    parser.add_argument(
+    parser.add_argument( # only used for report writing, not used anymore
         "--plot-pnp",
         action="store_true",
         default=False,
         help= 'Plot PnP correspondences'
+    )
+    parser.add_argument(
+        "--support-rank",
+        action="store_true",
+        default=False,
+        help= 'Use support based ranking for selection.'
     )
 
     args = parser.parse_args()
@@ -498,7 +504,7 @@ def build_2d3d_correspondences_to_model(
     return (np.asarray(points3d, dtype=np.float64), np.asarray(pts2d, dtype=np.float64), 
             np.asarray(point_ids, dtype=np.float64), np.asarray(new_kp_ids, dtype=np.float64))
 
-def choose_next_image(
+def support_rank_candidate_images(
     state: ReconstructionState,
     all_matches: dict[tuple[int, int], list],
 ) -> int | None:
@@ -1065,7 +1071,6 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
     week2 = load_week2_module(args.week2_dir)
     week3 = load_week3_module(args.week3_dir)
     output_dir = week2.ensure_dir(args.output_dir)
-
     start_time = time.perf_counter()
 
     images = args.images
@@ -1138,8 +1143,10 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
     while state.unregistered_images:
         #next_image = choose_next_image(features, state, pairwise_matches)
         #next_image = choose_next_image(state, pairwise_matches)
-        
-        next_candidates = rank_candidate_images(state, pairwise_matches) # substitute with choose_image to use support based ranking
+        if not args.support_rank:
+            next_candidates = rank_candidate_images(state, pairwise_matches)
+        else:
+            next_candidates = support_rank_candidate_images(state, pairwise_matches)
         accepted_any = False
         for next_image in next_candidates:
             if next_image is None:
