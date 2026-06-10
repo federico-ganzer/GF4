@@ -530,6 +530,8 @@ def choose_next_image(
                 point_observers[point_id] = set()
             point_observers[point_id].add(img_id)
 
+    scores = []
+
     for image_id in state.unregistered_images:
         # To gather all unique 3D points that this unregistered image matches
         # to across all registered images, we can use a set.
@@ -593,8 +595,13 @@ def choose_next_image(
         if max_local_support > best_support:
             best_support = max_local_support
             best_image = image_id
+
+        if max_local_support > 0:
+            scores.append((max_local_support, image_id))
             
+    scores.sort(reverse=True)
    
+    return [image_id for _, image_id in scores]
     
     return best_image
 
@@ -1143,7 +1150,8 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         #next_image = choose_next_image(features, state, pairwise_matches)
         #next_image = choose_next_image(state, pairwise_matches)
         
-        next_candidates = rank_candidate_images(state, pairwise_matches)
+        # next_candidates = rank_candidate_images(state, pairwise_matches)
+        next_candidates = choose_next_image(state, pairwise_matches)
         accepted_any = False
         for next_image in next_candidates:
             if next_image is None:
