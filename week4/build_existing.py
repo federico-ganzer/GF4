@@ -1,3 +1,8 @@
+import os
+os.environ["XDG_SESSION_TYPE"] = "x11"
+
+
+
 import argparse
 from pathlib import Path
 import open3d as o3d

@@ -24,7 +24,7 @@ DEFAULT_WEEK2_DIR = Path(__file__).resolve().parents[1] / "week2"
 DEFAULT_WEEK3_DIR = Path(__file__).resolve().parents[1] / "week3"
 
 
-@dataclass
+@dataclass # stores scene graph edge information
 class PairwiseEdge:
     image_i: int
     image_j: int
@@ -34,15 +34,15 @@ class PairwiseEdge:
     essential_matrix: np.ndarray
 
 
-@dataclass
+@dataclass # stores state of reconstruction
 class ReconstructionState:
-    registered_images: list[int]
-    unregistered_images: list[int]
-    camera_rotations: dict[int, np.ndarray]
-    camera_translations: dict[int, np.ndarray]
-    tracks: dict[tuple[int, int], int]
-    points3d: np.ndarray
-    point_colors: np.ndarray
+    registered_images: list[int]                # registered set
+    unregistered_images: list[int]              # unregistered image set
+    camera_rotations: dict[int, np.ndarray]     # key: image_id, value: Rotation matrix
+    camera_translations: dict[int, np.ndarray]  # same but for translation
+    tracks: dict[tuple[int, int], int]          # tracks -> key: (image_id, kp_idx), value: index for point in 3D space
+    points3d: np.ndarray                        # all 3D points
+    point_colors: np.ndarray                    # Corresponding colour of 3D points
     
     
 import open3d as o3d
@@ -245,6 +245,12 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help= 'Conduct Bundle Adjustment'
     )
+    parser.add_argument(
+        "--plot-pnp",
+        action="store_true",
+        default=False,
+        help= 'Plot PnP correspondences'
+    )
 
     args = parser.parse_args()
     if args.max_image_size == 0:
@@ -421,8 +427,8 @@ def register_initial_pair(
         inlier_mask=edge.inlier_mask,
     )
 
-    pts_i_pose = pts_i[pose_mask]
-    pts_j_pose = pts_j[pose_mask]
+    pts_i_pose = pts_i[pose_mask]   # select geometrically consistent points in respcetive images
+    pts_j_pose = pts_j[pose_mask]   # select geometrically consistent points in respcetive images
     pose_matches = [match for match, keep in zip(edge.matches, pose_mask) if keep]
 
     points3d = week3.triangulate_points(pts_i_pose, pts_j_pose, K, R, t)
@@ -439,7 +445,7 @@ def register_initial_pair(
 
     kept_points = points3d[keep_mask]
     kept_colors = week3.sample_point_colours(features[i].image, pts_i_pose[keep_mask])
-
+    # initialise tracks
     tracks: dict[tuple[int, int], int] = {}
     next_point_id = 0
     for match, keep in zip(pose_matches, keep_mask):
@@ -508,11 +514,10 @@ def choose_next_image(
     most 2D matches to already registered images, where the 2D matches must be to 
     keypoints that are part of existing 3D tracks in the model. This will ensure 
     that the next image has enough overlap with the existing reconstruction to be 
-    successfully registered with PnP.
+    successfully registered with PnP. (NOT USED RANK BASED : PLS IGNORE)
 
     Indicators used:
      - shared RANSAC inliers
-     - 
     """
     best_image = None
     best_support = 0
@@ -594,6 +599,9 @@ def choose_next_image(
     return best_image
 
 def observations_by_image(state):
+    """
+    (NOT USED SWITCHED TO RANK BASED SELECTION)
+    """
     obs = {}
     for (img_id, kp_idx), point_id in state.tracks.items():
         obs.setdefault(img_id, set()).add(point_id)
@@ -629,7 +637,7 @@ def choose_active_point_ids(state, active_camera_ids, min_active_obs=2):
     Select the 3D points belonging to the BA window.
     
     Returns:
-        [(img_idx, kp_idx), ... ]
+        [new_image_id, neighbour_1, neighbour_2, ..., neighbour_max]
     '''
     
     active_set = set(active_camera_ids)
@@ -902,9 +910,8 @@ def register_next_image(
     pnp_ransac_threshold: float,
     confidence: float,
     min_pnp_inliers: int,
-    ) -> bool:
-    #correspondences3d = []
-    #correspondences2d = []
+    output_dir) -> bool:
+
     correspondence_rows = []
     for reg_id in state.registered_images:
         pair = (reg_id, image_id) if (reg_id, image_id) in all_matches else (image_id, reg_id)
@@ -920,9 +927,7 @@ def register_next_image(
                                                                               )  
                                                                               
         print(f'3D points between registered {reg_id} and unregistered image {image_id}: {len(pts3d)}')
-        #if len(pts3d):
-        #    correspondences3d.append(pts3d)
-        #    correspondences2d.append(pts2d)
+
         for X, x, pid, kid in zip(pts3d, pts2d, point_ids, kp_ids):
             correspondence_rows.append((pid, kid, X, x))
 
@@ -952,7 +957,7 @@ def register_next_image(
     pts2d = np.asarray(final_x, dtype=np.float64)
     
     if len(points3d) < 6:
-        return False
+        return False, 0
 
     R_new, t_new, pnp_mask = week3.estimate_camera_pose_pnp(
         points3d,
@@ -966,14 +971,14 @@ def register_next_image(
     print(f'Inlier count:{inlier_count}')
     
     if inlier_count < min_pnp_inliers:
-        return False
+        return False, inlier_count
 
     inlier_X = points3d[pnp_mask.ravel().astype(bool)]
     inlier_x = pts2d[pnp_mask.ravel().astype(bool)]
     errs = week3.compute_reprojection_errors(inlier_X, inlier_x, K, R_new, t_new)
 
     if np.median(errs) > 3.0 or np.mean(errs) > 5.0:
-        return False
+        return False, inlier_count
 
     state.camera_rotations[image_id] = R_new
     state.camera_translations[image_id] = t_new
@@ -991,9 +996,14 @@ def register_next_image(
         max_reprojection_error=4.0 # Or pass this down from args
     )
     
-    return True
+    return True, inlier_count
 
 def rank_candidate_images(state, pairwise_matches):
+    """
+    For given the current registered and unregistered images, rank unregistered images by how many inliner 
+    matches they have with images in the registered set.
+    """
+
     scores = []
     for image_id in state.unregistered_images:
         score = 0
@@ -1011,10 +1021,56 @@ def rank_candidate_images(state, pairwise_matches):
     
     return [image_id for _, image in scores]
 
+
+
+def draw_correspondence_matches(
+    features,
+    reg_id: int,
+    new_id: int,
+    matches: list,
+    state: ReconstructionState,
+    pair: tuple[int, int],
+    output_dir: Path,
+) -> None:
+    selected_matches = []
+    for match in matches:
+        if pair[0] == reg_id:
+            kp_reg = match.queryIdx
+        else:
+            kp_reg = match.trainIdx
+
+        if (reg_id, kp_reg) in state.tracks:
+            selected_matches.append(match)
+
+    if not selected_matches:
+        return
+
+    img_reg = features[reg_id].image
+    img_new = features[new_id].image
+    kp_reg = features[reg_id].keypoints
+    kp_new = features[new_id].keypoints
+
+    drawn = cv2.drawMatches(
+        img_reg,
+        kp_reg,
+        img_new,
+        kp_new,
+        selected_matches,
+        None,
+        flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS,
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"matches_reg{reg_id}_new{new_id}.png"
+    cv2.imwrite(str(output_path), drawn)
+
+import time
+
 def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
     week2 = load_week2_module(args.week2_dir)
     week3 = load_week3_module(args.week3_dir)
     output_dir = week2.ensure_dir(args.output_dir)
+
+    start_time = time.perf_counter()
 
     images = args.images
     if args.image_dir is not None:
@@ -1061,7 +1117,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         K,
         max_reprojection_error=args.max_reprojection_error,
     )
-
+    end_pre_time = time.perf_counter()
     plotter = ReconstructionPlotter(window_name="Live GF4 Reconstruction")
     plotter.update(state, K)
     # time.sleep(2)
@@ -1082,7 +1138,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
             "point_median_px"
         ])
 
-
+    pnp_inlier_counts = []
     while state.unregistered_images:
         #next_image = choose_next_image(features, state, pairwise_matches)
         #next_image = choose_next_image(state, pairwise_matches)
@@ -1093,7 +1149,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
             if next_image is None:
                 print('Next image not found.')
                 break
-            accepted = register_next_image(
+            accepted, inlier_count = register_next_image(
                 week2,
                 week3,
                 features,
@@ -1104,12 +1160,30 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
                 args.pnp_ransac_threshold,
                 args.confidence,
                 args.min_pnp_inliers,
+                args.output_dir
             )
             if accepted:
+                pnp_inlier_counts.append(inlier_count)
                 accepted_any = True
                 break
         
         if not accepted_any:
+            g_mean, g_med = re.compute_global_reprojection_error(state, features, K, week3)
+            p_mean, p_med = re.compute_pointwise_reprojection_error(state, features, K, week3)
+            print(f"  -> Global Error:   Mean {g_mean:.3f}px | Median {g_med:.3f}px")
+            print(f"  -> Point-wise Err: Mean {p_mean:.3f}px | Median {p_med:.3f}px")
+            print(f"  -> Median PnP Inlier Count: {np.median(pnp_inlier_counts)}")
+            with open(csv_path, "a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                len(state.registered_images),
+                next_image,
+                len(state.points3d),
+                f"{g_mean:.4f}",
+                f"{g_med:.4f}",
+                f"{p_mean:.4f}",
+                f"{p_med:.4f}"
+            ])
             break
         
         # if len(state.registered_images) > 3 and len(state.registered_images) % 4 == 0 and args.bundle_adjustment:
@@ -1119,6 +1193,7 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         p_mean, p_med = re.compute_pointwise_reprojection_error(state, features, K, week3)
         print(f"  -> Global Error:   Mean {g_mean:.3f}px | Median {g_med:.3f}px")
         print(f"  -> Point-wise Err: Mean {p_mean:.3f}px | Median {p_med:.3f}px")
+        print(f"  -> Median PnP Inlier Count: {np.median(pnp_inlier_counts)}")
 
         with open(csv_path, "a", newline="") as f:
             writer = csv.writer(f)
@@ -1136,6 +1211,10 @@ def incremental_reconstruction(args: argparse.Namespace) -> ReconstructionState:
         # time.sleep(2)
         plotter.vis.poll_events()
         plotter.vis.update_renderer()
+    
+    end_time = time.perf_counter()
+    print(f"Seed runtime: {end_pre_time - start_time}s")
+    print(f"Total runtime: {end_time - start_time}s")
 
     print("Reconstruction complete. Close the 3D viewer window to continue.")
     plotter.vis.run() 
