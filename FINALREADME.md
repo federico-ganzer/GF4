@@ -38,9 +38,9 @@ python week4_pipeline.py \
   --output-dir output \
   --max-features 4000 \
   --max-image-size 1600 \
-  --ratio 0.775 \
+  --ratio 0.75 \
   --ransac-threshold 1.0 \
-  --pnp-ransac-threshold 6.0 \
+  --pnp-ransac-threshold 2.0 \
   --min-pnp-inliers 40 \ # may need to change depending on the dataset
   --bundle-adjustment \
   --support-rank
