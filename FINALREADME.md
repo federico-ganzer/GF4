@@ -30,6 +30,21 @@ You must also provide:
 
 - `--output-dir <folder>`
 
+### Example with our ideal parameters
+
+```bash
+python week4_pipeline.py \
+  --image-dir path/to/images \
+  --output-dir output \
+  --max-features 4000 \
+  --max-image-size 1600 \
+  --ratio 0.775 \
+  --ransac-threshold 1.0 \
+  --pnp-ransac-threshold 6.0 \
+  --min-pnp-inliers 40 \ # may need to change depending on the dataset
+  --bundle-adjustment \
+  --support-rank
+`
 ### Example: run from an image directory
 
 ```bash
@@ -64,20 +79,7 @@ python week4_pipeline.py \
 - `--bundle-adjustment` : enable bundle adjustment
 - `--support-rank` : enable support-based ranking for image selection
 
-### Example with more controls
-
-```bash
-python week4_pipeline.py \
-  --image-dir path/to/images \
-  --output-dir output \
-  --max-features 4000 \
-  --max-image-size 1600 \
-  --ratio 0.775 \
-  --ransac-threshold 1.0 \
-  --pnp-ransac-threshold 6.0 \
-  --min-pnp-inliers 20 \
-  --bundle-adjustment \
-```
+``
 
 ## Output
 
